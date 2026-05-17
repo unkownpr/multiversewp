@@ -14,6 +14,7 @@ struct RootView: View {
                 .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(minWidth: 980, minHeight: 620)
+        .ignoresSafeArea(.all, edges: .top)
         .preferredColorScheme(.light)
         .sheet(item: $environment.pendingOnboarding) { request in
             AccountOnboardingView(request: request)

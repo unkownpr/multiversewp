@@ -31,6 +31,9 @@ enum WATheme {
         static let chatRowHeight: CGFloat = 72
         static let avatarSize: CGFloat = 44
         static let smallAvatarSize: CGFloat = 36
+        /// Top clearance reserved for macOS traffic-light controls when the
+        /// title bar is hidden. Matches the standard close/min/max button row.
+        static let titleBarClearance: CGFloat = 28
     }
 
     enum Initials {

@@ -17,6 +17,9 @@ struct ChatDetailColumn: View {
     private var content: some View {
         if let chatID = environment.selectedChatID {
             VStack(spacing: 0) {
+                // Match the sidebar traffic-light clearance so the chat header
+                // aligns with the other columns' top baseline.
+                Color.clear.frame(height: WATheme.Metrics.titleBarClearance)
                 header(for: chatID)
                 Divider().opacity(0.4)
                 messageList

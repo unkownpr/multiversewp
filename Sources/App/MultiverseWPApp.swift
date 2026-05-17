@@ -12,8 +12,7 @@ struct MultiverseWPApp: App {
                 .frame(minWidth: 900, minHeight: 600)
                 .task { await environment.bootstrap() }
         }
-        .windowStyle(.titleBar)
-        .windowToolbarStyle(.unified)
+        .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandMenu("Account") {

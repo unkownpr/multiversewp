@@ -1,4 +1,10 @@
 import SwiftUI
+import AppKit
+
+/// Height reserved at the top of the account sidebar so that the macOS
+/// traffic-light controls (close / minimize / zoom) sit comfortably over
+/// the dark strip instead of overlapping account chips.
+private let trafficLightClearance: CGFloat = WATheme.Metrics.titleBarClearance
 
 struct AccountSidebar: View {
 
@@ -6,10 +12,14 @@ struct AccountSidebar: View {
 
     var body: some View {
         VStack(spacing: 12) {
+            // Reserve vertical room for the traffic-light controls and let
+            // the user drag the window by grabbing this otherwise-empty strip.
+            WindowDragHandle()
+                .frame(height: trafficLightClearance)
+
             Image(systemName: "infinity.circle.fill")
                 .font(.system(size: 30))
                 .foregroundStyle(WATheme.Colors.accent)
-                .padding(.top, 16)
                 .accessibilityHidden(true)
 
             ScrollView {
@@ -108,5 +118,21 @@ private struct AccountChip: View {
         case .connected: "Online"
         case .unauthorized: "Re-link required"
         }
+    }
+}
+
+/// Transparent NSView that reports `mouseDownCanMoveWindow = true` so the
+/// window can be dragged from this region — used to preserve the macOS
+/// title-bar drag affordance after we hide the system title bar.
+private struct WindowDragHandle: NSViewRepresentable {
+
+    func makeNSView(context: Context) -> NSView {
+        DraggableNSView()
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    private final class DraggableNSView: NSView {
+        override var mouseDownCanMoveWindow: Bool { true }
     }
 }
