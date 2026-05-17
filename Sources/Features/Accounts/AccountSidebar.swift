@@ -36,7 +36,7 @@ struct AccountSidebar: View {
                     }
                     .buttonStyle(.plain)
                     .help("Add another WhatsApp account")
-                    .accessibilityLabel("Add Account")
+                    .accessibilityLabel("Add another WhatsApp account")
                 }
                 .padding(.vertical, 12)
             }
