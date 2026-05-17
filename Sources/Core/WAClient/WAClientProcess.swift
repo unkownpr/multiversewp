@@ -1,3 +1,4 @@
+@preconcurrency import Combine
 import Foundation
 import OSLog
 import os
@@ -6,7 +7,19 @@ final class WAClientProcess: WAClient, @unchecked Sendable {
 
     let accountID: Account.ID
 
-    var events: AsyncStream<WAClientEvent> { eventStream }
+    /// Each access returns a fresh AsyncStream that subscribes to the shared
+    /// PassthroughSubject. That lets multiple consumers (the onboarding view
+    /// model AND the MessageIngestionService) observe the same helper events
+    /// independently — Swift's AsyncStream is otherwise single-consumer and
+    /// the second iterator would race the first.
+    var events: AsyncStream<WAClientEvent> {
+        AsyncStream { continuation in
+            let cancellable = subject.sink { event in
+                continuation.yield(event)
+            }
+            continuation.onTermination = { _ in cancellable.cancel() }
+        }
+    }
 
     private struct State {
         var process: Process?
@@ -18,21 +31,16 @@ final class WAClientProcess: WAClient, @unchecked Sendable {
     private let keychain: KeychainStore
     private let log = AppLog.make("WAClient")
     private let state = OSAllocatedUnfairLock(initialState: State())
-
-    private let eventStream: AsyncStream<WAClientEvent>
-    private let eventContinuation: AsyncStream<WAClientEvent>.Continuation
+    private let subject = PassthroughSubject<WAClientEvent, Never>()
 
     init(accountID: Account.ID, helperLocator: HelperBinaryLocator, keychain: KeychainStore) {
         self.accountID = accountID
         self.helperLocator = helperLocator
         self.keychain = keychain
-        var continuation: AsyncStream<WAClientEvent>.Continuation!
-        self.eventStream = AsyncStream { continuation = $0 }
-        self.eventContinuation = continuation
     }
 
     deinit {
-        eventContinuation.finish()
+        subject.send(completion: .finished)
         state.withLock { $0.process?.terminate() }
     }
 
@@ -62,7 +70,7 @@ final class WAClientProcess: WAClient, @unchecked Sendable {
         proc.standardError = stderrPipe
 
         proc.terminationHandler = { [weak self] _ in
-            self?.eventContinuation.yield(.disconnected(reason: "helper exited"))
+            self?.subject.send(.disconnected(reason: "helper exited"))
         }
 
         do {
@@ -95,7 +103,7 @@ final class WAClientProcess: WAClient, @unchecked Sendable {
         for continuation in pending {
             continuation.resume(throwing: WAClientError.notConnected)
         }
-        eventContinuation.yield(.disconnected(reason: nil))
+        subject.send(.disconnected(reason: nil))
     }
 
     func sendMessage(_ request: SendMessageRequest) async throws -> String {
@@ -163,7 +171,7 @@ final class WAClientProcess: WAClient, @unchecked Sendable {
         do {
             try handle.write(contentsOf: payload)
         } catch {
-            eventContinuation.yield(.error("transmit failed: \(error.localizedDescription)"))
+            subject.send(.error("transmit failed: \(error.localizedDescription)"))
             throw error
         }
     }
@@ -201,7 +209,7 @@ final class WAClientProcess: WAClient, @unchecked Sendable {
                 }
                 continuation?.resume(returning: response)
             case .event(let event):
-                eventContinuation.yield(event)
+                subject.send(event)
             }
         } catch {
             log.error("Decode error: \(error.localizedDescription, privacy: .public)")

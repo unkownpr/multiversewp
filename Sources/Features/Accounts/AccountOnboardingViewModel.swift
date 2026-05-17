@@ -45,6 +45,11 @@ final class AccountOnboardingViewModel: ObservableObject {
         let client = clientProvider(id)
         self.client = client
 
+        // Subscribe to the helper's PassthroughSubject before kicking off the
+        // connect call so we don't miss the first QR event when running with
+        // an instant MockWAClient (and to make ordering deterministic with
+        // the real helper as well).
+        let stream = client.events
         task = Task { @MainActor [weak self] in
             do {
                 try await client.connect()
@@ -52,7 +57,7 @@ final class AccountOnboardingViewModel: ObservableObject {
                 self?.phase = .failed(reason: error.localizedDescription)
                 return
             }
-            for await event in client.events {
+            for await event in stream {
                 guard !Task.isCancelled, let self else { break }
                 await self.handle(event: event, storage: storage)
                 // Hand off to the long-lived MessageIngestionService once the

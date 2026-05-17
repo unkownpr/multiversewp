@@ -39,9 +39,12 @@ public final class MessageIngestionService {
 
     public func subscribe(account: Account, client: WAClient) {
         tasks[account.id]?.cancel()
+        // Capture the AsyncStream synchronously so the underlying subject
+        // subscription is in place before the helper's next event lands.
+        let stream = client.events
         tasks[account.id] = Task { [weak self] in
             guard let self else { return }
-            for await event in client.events {
+            for await event in stream {
                 if Task.isCancelled { return }
                 await self.handle(event: event, account: account)
             }

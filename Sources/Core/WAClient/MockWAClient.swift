@@ -1,12 +1,20 @@
+@preconcurrency import Combine
 import Foundation
 
 public final class MockWAClient: WAClient, @unchecked Sendable {
 
     public let accountID: Account.ID
-    public var events: AsyncStream<WAClientEvent> { eventStream }
 
-    private let eventStream: AsyncStream<WAClientEvent>
-    private let eventContinuation: AsyncStream<WAClientEvent>.Continuation
+    public var events: AsyncStream<WAClientEvent> {
+        AsyncStream { continuation in
+            let cancellable = subject.sink { event in
+                continuation.yield(event)
+            }
+            continuation.onTermination = { _ in cancellable.cancel() }
+        }
+    }
+
+    private let subject = PassthroughSubject<WAClientEvent, Never>()
 
     public private(set) var sentMessages: [SendMessageRequest] = []
     public private(set) var connectCalls = 0
@@ -16,9 +24,6 @@ public final class MockWAClient: WAClient, @unchecked Sendable {
 
     public init(accountID: Account.ID = UUID()) {
         self.accountID = accountID
-        var continuation: AsyncStream<WAClientEvent>.Continuation!
-        self.eventStream = AsyncStream { continuation = $0 }
-        self.eventContinuation = continuation
     }
 
     public func connect() async throws {
@@ -42,10 +47,10 @@ public final class MockWAClient: WAClient, @unchecked Sendable {
     public func markChatRead(chatJID: String) async throws {}
 
     public func emit(_ event: WAClientEvent) {
-        eventContinuation.yield(event)
+        subject.send(event)
     }
 
     public func finish() {
-        eventContinuation.finish()
+        subject.send(completion: .finished)
     }
 }
