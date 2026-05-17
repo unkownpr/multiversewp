@@ -395,6 +395,16 @@ struct ContactsRepositoryGRDB: ContactsRepository {
         }
     }
 
+    func contact(jid: String, accountID: Account.ID) async throws -> Contact? {
+        try await dbPool.read { db in
+            try Row.fetchOne(
+                db,
+                sql: "SELECT * FROM contact WHERE account_id = ? AND jid = ? LIMIT 1",
+                arguments: [accountID.uuidString, jid]
+            ).map(Contact.init(row:))
+        }
+    }
+
     func upsert(_ contact: Contact) async throws {
         try await dbPool.write { db in
             try db.execute(

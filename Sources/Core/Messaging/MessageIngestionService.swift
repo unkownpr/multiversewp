@@ -84,7 +84,11 @@ public final class MessageIngestionService {
         let chatID = incoming.chatJID
         do {
             let existingChat = try await storage.chats.chat(id: chatID)
-            let title = existingChat?.title ?? defaultChatTitle(jid: incoming.chatJID, sender: incoming.senderPushName)
+            let title = await resolveChatTitle(
+                existing: existingChat,
+                incoming: incoming,
+                accountID: account.id
+            )
             let chat = Chat(
                 id: chatID,
                 accountID: account.id,
@@ -156,9 +160,63 @@ public final class MessageIngestionService {
         do {
             try await storage.contacts.upsert(model)
             eventBus.publish(.contactUpdated(model))
+            // If a 1:1 chat already exists for this JID and its title is
+            // still the bare JID prefix, retitle it with the freshly-known
+            // push / business name.
+            if let chat = try await storage.chats.chat(id: contact.jid),
+               !chat.isGroup,
+               looksLikeJIDTitle(chat.title, jid: chat.jid) {
+                let display = model.displayName
+                if display != chat.jid, display != chat.title {
+                    var renamed = chat
+                    renamed.title = display
+                    try await storage.chats.upsert(renamed)
+                    eventBus.publish(.chatUpdated(renamed))
+                }
+            }
         } catch {
             log.error("contact upsert failed: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    private func resolveChatTitle(
+        existing: Chat?,
+        incoming: IncomingMessage,
+        accountID: Account.ID
+    ) async -> String {
+        // If the existing title already reads as a human label, keep it.
+        if let existing, !looksLikeJIDTitle(existing.title, jid: existing.jid) {
+            return existing.title
+        }
+
+        // 1:1 chat: peer push name from the incoming envelope when the peer
+        // is the sender.
+        if !incoming.isGroup,
+           !incoming.isFromMe,
+           let push = incoming.senderPushName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !push.isEmpty {
+            return push
+        }
+
+        // Look the peer up in the contact store (the helper's HistorySync
+        // Pushname stream populates these on cold pair).
+        if let contact = try? await storage.contacts.contact(jid: incoming.chatJID, accountID: accountID) {
+            let display = contact.displayName
+            if display != incoming.chatJID, !display.isEmpty {
+                return display
+            }
+        }
+
+        // Last resort — format the JID local part as a phone number.
+        return defaultChatTitle(jid: incoming.chatJID, sender: incoming.senderPushName)
+    }
+
+    private func looksLikeJIDTitle(_ title: String, jid: String) -> Bool {
+        if title.isEmpty { return true }
+        let local = String(jid.split(separator: "@").first ?? "")
+        if title == local { return true }
+        if title.allSatisfy({ $0.isNumber }) { return true }
+        return false
     }
 
     private func isChatCurrentlyOpen(accountID: Account.ID, chatID: Chat.ID) -> Bool {

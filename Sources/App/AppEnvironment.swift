@@ -67,6 +67,7 @@ final class AppEnvironment: ObservableObject {
         do {
             try storage.migrateIfNeeded()
             try await healEmptyAccountNames()
+            try await healChatTitles()
             accounts = try await storage.accounts.allAccounts()
             if accounts.isEmpty {
                 pendingOnboarding = OnboardingRequest()
@@ -120,6 +121,36 @@ final class AppEnvironment: ObservableObject {
         }
     }
 
+    /// One-shot retitle for chats whose title was stored as the raw JID
+    /// prefix (numeric phone) because the contact lookup landed *after* the
+    /// chat row was first written. Run on every bootstrap so any new
+    /// contact pushNames added between sessions filter through.
+    private func healChatTitles() async throws {
+        let accountList = try await storage.accounts.allAccounts()
+        for account in accountList {
+            let chats = try await storage.chats.chats(forAccount: account.id)
+            for chat in chats where !chat.isGroup {
+                guard chatTitleLooksNumeric(chat.title, jid: chat.jid) else { continue }
+                if let contact = try await storage.contacts.contact(jid: chat.jid, accountID: account.id) {
+                    let display = contact.displayName
+                    if display != chat.jid, display != chat.title, !display.isEmpty {
+                        var renamed = chat
+                        renamed.title = display
+                        try await storage.chats.upsert(renamed)
+                    }
+                }
+            }
+        }
+    }
+
+    private func chatTitleLooksNumeric(_ title: String, jid: String) -> Bool {
+        if title.isEmpty { return true }
+        let local = String(jid.split(separator: "@").first ?? "")
+        if title == local { return true }
+        if title.allSatisfy({ $0.isNumber }) { return true }
+        return false
+    }
+
     /// Backfill any account whose displayName slipped through with an empty
     /// or placeholder value (early builds had a fallback bug). Try the JID
     /// phone prefix first, then push name, then a generic label.
@@ -152,9 +183,20 @@ final class AppEnvironment: ObservableObject {
     func selectChat(_ id: Chat.ID?) {
         selectedChatID = id
         guard let id else { return }
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 try await storage.chats.resetUnread(for: id)
+                // Republish the chat so ChatListViewModel.observe re-fetches
+                // and the unread capsule disappears in real time.
+                if let chat = try await storage.chats.chat(id: id) {
+                    eventBus.publish(.chatUpdated(chat))
+                    // Best-effort WhatsApp read receipt for incoming messages
+                    // that the local store still has as unread.
+                    if let client = clients[chat.accountID] {
+                        try? await client.markChatRead(chatJID: chat.jid)
+                    }
+                }
             } catch {
                 log.error("resetUnread failed: \(error.localizedDescription, privacy: .public)")
             }

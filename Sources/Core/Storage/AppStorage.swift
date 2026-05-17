@@ -26,6 +26,7 @@ public protocol MessagesRepository: Sendable {
 
 public protocol ContactsRepository: Sendable {
     func contacts(forAccount accountID: Account.ID, query: String?) async throws -> [Contact]
+    func contact(jid: String, accountID: Account.ID) async throws -> Contact?
     func upsert(_ contact: Contact) async throws
 }
 
