@@ -18,18 +18,46 @@ onboarding, chat list & detail, composer).
 Phase 2 (multi-account), Phase 3 (MCP), Phase 4 (OSS polish + notarized DMG)
 are tracked in `CLAUDE.md`.
 
-## Quick Start
+## Install (End-User)
+
+1. Grab the latest `MultiverseWP-x.y.z.dmg` from the GitHub Releases page.
+2. Open the DMG and drag `MultiverseWP.app` into your `Applications` folder.
+3. Double-click to launch.
+
+> First launch will show the macOS Gatekeeper warning
+> *"MultiverseWP.app can't be opened because Apple cannot check it for
+> malicious software"*. This is expected for an ad-hoc-signed build.
+> **Workaround**: right-click the app → **Open** → **Open** in the
+> confirmation dialog. After that first launch macOS remembers it.
+>
+> Notarized builds (full Apple Developer release) will land in a later
+> phase and remove this step.
+
+The app is self-contained — every dependency, including the Go
+`whatsmeow-helper`, ships inside the `.app` bundle. No Homebrew, no
+Xcode, no manual setup.
+
+## Build From Source (Developers)
 
 ```bash
-# Once: install toolchain
-brew install xcodegen swiftlint go protobuf
-
-# Generate the Xcode project, build the helper stub
+# Once on a fresh checkout — installs Homebrew + xcodegen, swiftlint,
+# go, protobuf (only the ones missing) and produces a working Xcode
+# project plus the helper binary.
 ./scripts/bootstrap.sh
 
-# Open Xcode and run the MultiverseWP scheme
+# Open Xcode and run the MultiverseWP scheme.
 open MultiverseWP.xcodeproj
 ```
+
+## Cut a Release DMG
+
+```bash
+MULTIVERSEWP_VERSION=0.1.0 ./scripts/release.sh
+# → release/MultiverseWP-0.1.0.dmg
+```
+
+Set `DEVELOPMENT_TEAM`, `NOTARY_APPLE_ID`, `NOTARY_PASSWORD`,
+`NOTARY_TEAM_ID` to ship a notarized build (no Gatekeeper warning).
 
 The app launches with an onboarding sheet that renders a stub QR (the helper
 is in simulation mode). Once the upstream `whatsmeow` Go dependency is wired
