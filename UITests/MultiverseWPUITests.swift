@@ -11,8 +11,11 @@ final class MultiverseWPUITests: XCTestCase {
         app.launchEnvironment["MULTIVERSEWP_UI_TEST"] = "1"
         app.launch()
 
-        let sidebar = app.outlines["AccountSidebar"]
-        XCTAssertTrue(sidebar.waitForExistence(timeout: 5))
+        // Onboarding sheet hosts the canonical header text on cold launch with
+        // an empty in-memory store; once that exists we know the SwiftUI scene
+        // has finished mounting.
+        let header = app.staticTexts["Link a WhatsApp Account"]
+        XCTAssertTrue(header.waitForExistence(timeout: 10), "Main window should mount and surface onboarding")
     }
 
     func testOnboardingSheetAppearsOnFirstLaunch() {

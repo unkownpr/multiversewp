@@ -12,15 +12,22 @@ struct AccountOnboardingView: View {
     @State private var draftName: String = "My WhatsApp"
 
     var body: some View {
-        VStack(spacing: 20) {
-            header
-            divider
-            content
-            Spacer(minLength: 0)
-            footer
+        ZStack {
+            LinearGradient(
+                colors: [WATheme.Colors.accentDark, WATheme.Colors.accent],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+
+            VStack(spacing: 22) {
+                header
+                card
+                Spacer(minLength: 0)
+                footer
+            }
+            .padding(28)
         }
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityIdentifier("AccountOnboardingView")
         .task {
             await viewModel.startSession(
@@ -44,18 +51,31 @@ struct AccountOnboardingView: View {
     }
 
     private var header: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 10) {
+            ZStack {
+                Circle().fill(.white.opacity(0.15)).frame(width: 64, height: 64)
+                Image(systemName: "infinity.circle.fill")
+                    .font(.system(size: 40))
+                    .foregroundStyle(.white)
+            }
             Text("Link a WhatsApp Account")
                 .font(.title2.bold())
-            Text("Open WhatsApp on your phone → Settings → Linked Devices → Link a Device")
+                .foregroundStyle(.white)
+            Text("On your phone: Settings → Linked Devices → Link a Device")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.85))
                 .multilineTextAlignment(.center)
         }
     }
 
-    private var divider: some View {
-        Divider().padding(.vertical, 4)
+    private var card: some View {
+        VStack(spacing: 16) {
+            content
+        }
+        .padding(24)
+        .frame(minWidth: 320, minHeight: 320)
+        .background(.white, in: RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.25), radius: 18, y: 10)
     }
 
     @ViewBuilder
@@ -64,26 +84,31 @@ struct AccountOnboardingView: View {
         case .preparing:
             VStack(spacing: 12) {
                 ProgressView()
-                Text("Preparing helper…")
-                    .foregroundStyle(.secondary)
+                Text("Preparing helper…").foregroundStyle(.secondary)
             }
-            .frame(minWidth: 280, minHeight: 280)
+            .frame(minWidth: 240, minHeight: 240)
         case .awaitingQR(let code):
             qrSection(code: code)
         case .pairing:
             VStack(spacing: 12) {
                 ProgressView()
-                Text("Linking device…")
+                Text("Linking device…").foregroundStyle(.secondary)
             }
+            .frame(minWidth: 240, minHeight: 240)
         case .completed:
             VStack(spacing: 8) {
-                Image(systemName: "checkmark.circle.fill").imageScale(.large).foregroundStyle(.green)
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 36))
+                    .foregroundStyle(WATheme.Colors.accent)
                 Text("Linked!").font(.headline)
             }
+            .frame(minWidth: 240, minHeight: 240)
         case .failed(let reason):
             VStack(spacing: 10) {
-                Image(systemName: "xmark.octagon.fill").foregroundStyle(.red)
-                Text(reason).multilineTextAlignment(.center)
+                Image(systemName: "xmark.octagon.fill").foregroundStyle(.red).font(.title)
+                Text(reason)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
                 Button("Try Again") {
                     Task {
                         await viewModel.startSession(
@@ -93,21 +118,27 @@ struct AccountOnboardingView: View {
                         )
                     }
                 }
+                .controlSize(.large)
             }
         }
     }
 
     private func qrSection(code: String) -> some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 14) {
             QRCodeImage(text: code)
-                .frame(width: 240, height: 240)
-                .padding(8)
-                .background(.background, in: RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(.separator))
-            TextField("Account label", text: $draftName)
-                .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: 280)
-            Text("Code refreshes automatically.")
+                .frame(width: 220, height: 220)
+                .padding(10)
+                .background(.white, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(.black.opacity(0.06)))
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Account label").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                TextField("My WhatsApp", text: $draftName)
+                    .textFieldStyle(.roundedBorder)
+            }
+            .frame(maxWidth: 240)
+
+            Text("The code refreshes automatically.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -125,7 +156,11 @@ struct AccountOnboardingView: View {
                 dismiss()
             }
             .keyboardShortcut(.cancelAction)
+            .tint(.white)
             Spacer()
+            Text("End-to-end encryption by WhatsApp")
+                .font(.caption2)
+                .foregroundStyle(.white.opacity(0.7))
         }
     }
 }

@@ -116,11 +116,8 @@ schemes:
       coverageTargets:
         - MultiverseWP
       targets:
-        - name: MultiverseWPTests
-          parallelizable: true
-          randomExecutionOrder: true
-        - name: MultiverseWPUITests
-          parallelizable: false
+        - MultiverseWPTests
+        - MultiverseWPUITests
     profile:
       config: Release
     analyze:

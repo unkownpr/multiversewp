@@ -12,38 +12,60 @@ struct MessageComposer: View {
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
             Button {
+                // emoji picker not wired yet
+            } label: {
+                Image(systemName: "face.smiling")
+                    .font(.system(size: 18))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Emoji")
+            .disabled(true)
+
+            Button {
                 attachFile()
             } label: {
                 Image(systemName: "paperclip")
-                    .imageScale(.large)
+                    .font(.system(size: 18))
+                    .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Attach file")
+            .help("Attach")
 
-            TextField("Write a message", text: $text, axis: .vertical)
+            TextField("Type a message", text: $text, axis: .vertical)
                 .lineLimit(1...6)
                 .textFieldStyle(.plain)
                 .focused($focused)
                 .padding(.vertical, 8)
-                .padding(.horizontal, 12)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                .padding(.horizontal, 14)
+                .background(.white, in: Capsule())
+                .overlay(Capsule().stroke(.black.opacity(0.06)))
                 .onSubmit { Task { await send() } }
                 .accessibilityIdentifier("MessageComposerField")
 
-            Button {
-                Task { await send() }
-            } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .imageScale(.large)
-                    .foregroundStyle(canSend ? Color.accentColor : Color.secondary)
-            }
-            .buttonStyle(.plain)
-            .keyboardShortcut(.return, modifiers: [.command])
-            .disabled(!canSend)
-            .accessibilityIdentifier("MessageComposerSendButton")
+            sendButton
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
+    }
+
+    private var sendButton: some View {
+        Button {
+            Task { await send() }
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(canSend ? WATheme.Colors.accent : Color.gray.opacity(0.35))
+                    .frame(width: 36, height: 36)
+                Image(systemName: canSend ? "paperplane.fill" : "mic.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut(.return, modifiers: [.command])
+        .disabled(!canSend)
+        .accessibilityIdentifier("MessageComposerSendButton")
     }
 
     private var canSend: Bool {

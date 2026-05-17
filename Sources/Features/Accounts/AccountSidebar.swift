@@ -5,104 +5,108 @@ struct AccountSidebar: View {
     @EnvironmentObject private var environment: AppEnvironment
 
     var body: some View {
-        List(selection: Binding(
-            get: { environment.selectedAccountID },
-            set: { environment.selectAccount($0) }
-        )) {
-            Section("Accounts") {
-                if environment.accounts.isEmpty {
-                    EmptyAccountsRow()
-                } else {
+        VStack(spacing: 12) {
+            Image(systemName: "infinity.circle.fill")
+                .font(.system(size: 30))
+                .foregroundStyle(WATheme.Colors.accent)
+                .padding(.top, 16)
+                .accessibilityHidden(true)
+
+            ScrollView {
+                VStack(spacing: 14) {
                     ForEach(environment.accounts) { account in
-                        AccountRow(account: account)
-                            .tag(account.id)
+                        AccountChip(
+                            account: account,
+                            isSelected: environment.selectedAccountID == account.id
+                        ) {
+                            environment.selectAccount(account.id)
+                        }
                     }
+                    Button {
+                        environment.requestAddAccount()
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .strokeBorder(.white.opacity(0.45), style: .init(lineWidth: 1.5, dash: [4]))
+                                .frame(width: WATheme.Metrics.avatarSize, height: WATheme.Metrics.avatarSize)
+                            Image(systemName: "plus")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.85))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .help("Add another WhatsApp account")
+                    .accessibilityLabel("Add Account")
                 }
+                .padding(.vertical, 12)
             }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "gearshape.fill")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.5))
+                .padding(.bottom, 16)
+                .accessibilityLabel("Settings")
         }
-        .listStyle(.sidebar)
+        .frame(width: WATheme.Metrics.accountStripWidth)
+        .background(WATheme.Colors.sidebar)
         .accessibilityIdentifier("AccountSidebar")
-        .safeAreaInset(edge: .bottom) {
-            Button {
-                environment.requestAddAccount()
-            } label: {
-                Label("Add Account", systemImage: "plus.circle.fill")
-            }
-            .buttonStyle(.borderless)
-            .controlSize(.large)
-            .padding(8)
-        }
     }
 }
 
-private struct AccountRow: View {
+private struct AccountChip: View {
 
     let account: Account
+    let isSelected: Bool
+    let action: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
-            ZStack {
-                Circle()
-                    .fill(.tint)
-                Text(initials)
-                    .font(.headline)
-                    .foregroundStyle(.white)
-            }
-            .frame(width: 32, height: 32)
+        Button(action: action) {
+            ZStack(alignment: .bottomTrailing) {
+                AvatarView(
+                    seed: account.id.uuidString,
+                    label: account.displayName,
+                    size: WATheme.Metrics.avatarSize
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: WATheme.Metrics.avatarSize / 2)
+                        .stroke(isSelected ? Color.white : .clear, lineWidth: 2)
+                )
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(account.displayName)
-                    .font(.body)
-                    .lineLimit(1)
-                Text(stateLabel)
-                    .font(.caption)
-                    .foregroundStyle(stateColor)
-            }
-            Spacer()
-            if account.connectionState == .connected {
-                Image(systemName: "circle.fill")
-                    .font(.system(size: 6))
-                    .foregroundStyle(.green)
+                statusDot
+                    .offset(x: 2, y: 2)
             }
         }
+        .buttonStyle(.plain)
+        .help(account.displayName)
         .accessibilityIdentifier("AccountRow_\(account.id.uuidString)")
+        .accessibilityLabel(Text("\(account.displayName), \(statusLabel)"))
     }
 
-    private var initials: String {
-        let words = account.displayName.split(separator: " ")
-        let letters = words.prefix(2).compactMap { $0.first }.map(String.init).joined()
-        return letters.isEmpty ? "?" : letters.uppercased()
+    private var statusDot: some View {
+        Circle()
+            .fill(statusColor)
+            .frame(width: 12, height: 12)
+            .overlay(Circle().stroke(WATheme.Colors.sidebar, lineWidth: 2))
     }
 
-    private var stateLabel: String {
+    private var statusColor: Color {
+        switch account.connectionState {
+        case .connected: WATheme.Colors.onlineBadge
+        case .connecting, .awaitingQR: .orange
+        case .unauthorized: .red
+        case .disconnected: .gray
+        }
+    }
+
+    private var statusLabel: String {
         switch account.connectionState {
         case .disconnected: "Offline"
-        case .awaitingQR: "Scan QR"
-        case .connecting: "Connecting…"
+        case .awaitingQR: "Awaiting QR scan"
+        case .connecting: "Connecting"
         case .connected: "Online"
         case .unauthorized: "Re-link required"
         }
-    }
-
-    private var stateColor: Color {
-        switch account.connectionState {
-        case .connected: .green
-        case .connecting, .awaitingQR: .orange
-        case .unauthorized: .red
-        case .disconnected: .secondary
-        }
-    }
-}
-
-private struct EmptyAccountsRow: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("No accounts yet")
-                .font(.headline)
-            Text("Add your first WhatsApp account to start chatting.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.vertical, 4)
     }
 }
