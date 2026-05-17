@@ -117,7 +117,11 @@ struct AccountOnboardingView: View {
     private var footer: some View {
         HStack {
             Button("Cancel") {
+                let draftID = viewModel.draftAccountID
                 viewModel.cancel()
+                if let draftID {
+                    Task { await environment.discardOnboardingDraft(accountID: draftID) }
+                }
                 dismiss()
             }
             .keyboardShortcut(.cancelAction)

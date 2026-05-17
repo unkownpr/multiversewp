@@ -13,8 +13,9 @@ final class AccountOnboardingViewModel: ObservableObject {
 
     @Published private(set) var phase: Phase = .preparing
 
+    public private(set) var draftAccountID: Account.ID?
+
     private var task: Task<Void, Never>?
-    private var draftAccountID: Account.ID = UUID()
     private var client: WAClient?
 
     deinit {
@@ -28,8 +29,8 @@ final class AccountOnboardingViewModel: ObservableObject {
     ) async {
         task?.cancel()
         phase = .preparing
-        draftAccountID = UUID()
-        let id = draftAccountID
+        let id = UUID()
+        draftAccountID = id
         let label = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
 
         do {
@@ -69,6 +70,7 @@ final class AccountOnboardingViewModel: ObservableObject {
     }
 
     private func handle(event: WAClientEvent, storage: AppStorage) async {
+        guard let id = draftAccountID else { return }
         switch event {
         case .qrCode(let code):
             phase = .awaitingQR(code: code)
@@ -76,7 +78,7 @@ final class AccountOnboardingViewModel: ObservableObject {
             phase = .pairing
             do {
                 var account = Account(
-                    id: draftAccountID,
+                    id: id,
                     displayName: pushName ?? "My WhatsApp",
                     jid: jid,
                     pushName: pushName,
@@ -84,11 +86,11 @@ final class AccountOnboardingViewModel: ObservableObject {
                     lastConnectedAt: Date()
                 )
                 if pushName == nil, let existing = try await storage.accounts.allAccounts()
-                    .first(where: { $0.id == draftAccountID }) {
+                    .first(where: { $0.id == id }) {
                     account.displayName = existing.displayName
                 }
                 try await storage.accounts.upsert(account)
-                phase = .completed(accountID: draftAccountID)
+                phase = .completed(accountID: id)
             } catch {
                 phase = .failed(reason: error.localizedDescription)
             }

@@ -5,17 +5,14 @@ import OSLog
 @MainActor
 final class AppEnvironment: ObservableObject {
 
-    static let shared = AppEnvironment(
-        storage: AppStorage.makeDefault(),
-        clientFactory: WAClientFactory(),
-        keychain: KeychainStore(service: KeychainStore.defaultService),
-        eventBus: EventBus()
-    )
+    static let shared = AppEnvironment.makeDefault()
 
     let storage: AppStorage
     let clientFactory: WAClientFactory
     let keychain: KeychainStore
     let eventBus: EventBus
+    let notifications: NotificationCenterBridge
+    let ingestion: MessageIngestionService
     let log = Logger(subsystem: AppEnvironment.bundleIdentifier, category: "AppEnvironment")
 
     @Published var pendingOnboarding: OnboardingRequest?
@@ -27,17 +24,40 @@ final class AppEnvironment: ObservableObject {
 
     private var clients: [Account.ID: WAClient] = [:]
     private var bootstrapped = false
+    private let isUITest: Bool
 
     init(
         storage: AppStorage,
         clientFactory: WAClientFactory,
         keychain: KeychainStore,
-        eventBus: EventBus
+        eventBus: EventBus,
+        isUITest: Bool = false
     ) {
         self.storage = storage
         self.clientFactory = clientFactory
         self.keychain = keychain
         self.eventBus = eventBus
+        self.notifications = NotificationCenterBridge()
+        self.ingestion = MessageIngestionService(
+            storage: storage,
+            eventBus: eventBus,
+            notifier: nil,
+            selection: nil
+        )
+        self.isUITest = isUITest
+        ingestion.attach(selection: SelectionAdapter(environment: self), notifier: notifications)
+    }
+
+    static func makeDefault() -> AppEnvironment {
+        let isUITest = ProcessInfo.processInfo.environment["MULTIVERSEWP_UI_TEST"] == "1"
+        let storage = isUITest ? AppStorage.makeInMemory() : AppStorage.makeDefault()
+        return AppEnvironment(
+            storage: storage,
+            clientFactory: WAClientFactory(),
+            keychain: KeychainStore(service: KeychainStore.defaultService),
+            eventBus: EventBus(),
+            isUITest: isUITest
+        )
     }
 
     func bootstrap() async {
@@ -50,6 +70,14 @@ final class AppEnvironment: ObservableObject {
                 pendingOnboarding = OnboardingRequest()
             } else {
                 selectedAccountID = accounts.first?.id
+                for account in accounts {
+                    let client = self.client(for: account.id)
+                    ingestion.subscribe(account: account, client: client)
+                    Task { try? await client.connect() }
+                }
+            }
+            if !isUITest {
+                await notifications.requestAuthorizationIfNeeded()
             }
             log.info("Bootstrap complete with \(self.accounts.count, privacy: .public) account(s)")
         } catch {
@@ -68,6 +96,14 @@ final class AppEnvironment: ObservableObject {
 
     func selectChat(_ id: Chat.ID?) {
         selectedChatID = id
+        guard let id else { return }
+        Task {
+            do {
+                try await storage.chats.resetUnread(for: id)
+            } catch {
+                log.error("resetUnread failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
     }
 
     func client(for accountID: Account.ID) -> WAClient {
@@ -84,12 +120,36 @@ final class AppEnvironment: ObservableObject {
                !accounts.contains(where: { $0.id == selected }) {
                 selectedAccountID = accounts.first?.id
             }
+            for account in accounts where clients[account.id] == nil {
+                let client = self.client(for: account.id)
+                ingestion.subscribe(account: account, client: client)
+            }
         } catch {
             log.error("Reload accounts failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    func discardOnboardingDraft(accountID: Account.ID) async {
+        ingestion.unsubscribe(accountID: accountID)
+        if let client = clients.removeValue(forKey: accountID) {
+            await client.disconnect()
+        }
+        do {
+            try await storage.accounts.delete(id: accountID)
+            await reloadAccounts()
+        } catch {
+            log.error("discard draft failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 }
 
 struct OnboardingRequest: Identifiable {
     let id = UUID()
+}
+
+private final class SelectionAdapter: MessageIngestionService.SelectionProvider, @unchecked Sendable {
+    weak var environment: AppEnvironment?
+    init(environment: AppEnvironment) { self.environment = environment }
+    var selectedAccountID: Account.ID? { MainActor.assumeIsolated { environment?.selectedAccountID } }
+    var selectedChatID: Chat.ID? { MainActor.assumeIsolated { environment?.selectedChatID } }
 }

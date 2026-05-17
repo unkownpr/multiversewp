@@ -2,14 +2,14 @@ import Foundation
 import UserNotifications
 
 @MainActor
-public final class NotificationCenterBridge {
+public final class NotificationCenterBridge: MessageIngestionService.Notifier {
 
-    public static let shared = NotificationCenterBridge()
-
-    private let center = UNUserNotificationCenter.current()
+    private let center: UNUserNotificationCenter
     private let log = AppLog.make("Notifications")
 
-    private init() {}
+    public init(center: UNUserNotificationCenter = .current()) {
+        self.center = center
+    }
 
     public func requestAuthorizationIfNeeded() async {
         do {
@@ -20,7 +20,13 @@ public final class NotificationCenterBridge {
         }
     }
 
-    public func deliver(account: Account, chat: Chat, message: Message) async {
+    nonisolated public func deliver(account: Account, chat: Chat, message: Message) async {
+        await MainActor.run { [self] in
+            Task { await self.performDeliver(account: account, chat: chat, message: message) }
+        }
+    }
+
+    private func performDeliver(account: Account, chat: Chat, message: Message) async {
         guard account.notificationsEnabled, !chat.isMuted else { return }
         guard message.direction == .incoming else { return }
 
@@ -36,11 +42,7 @@ public final class NotificationCenterBridge {
             "message_id": message.id
         ]
 
-        let request = UNNotificationRequest(
-            identifier: message.id,
-            content: content,
-            trigger: nil
-        )
+        let request = UNNotificationRequest(identifier: message.id, content: content, trigger: nil)
         do {
             try await center.add(request)
         } catch {
