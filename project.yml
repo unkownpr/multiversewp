@@ -66,6 +66,40 @@ targets:
             echo "warning: SwiftLint not installed"
           fi
         basedOnDependencyAnalysis: false
+      - name: Build whatsmeow helper
+        script: |
+          set -euo pipefail
+          GO_BIN=""
+          for candidate in /opt/homebrew/bin/go /usr/local/bin/go "$(which go 2>/dev/null || true)"; do
+            if [ -x "$candidate" ]; then
+              GO_BIN="$candidate"
+              break
+            fi
+          done
+          if [ -z "$GO_BIN" ]; then
+            echo "warning: Go toolchain not found; whatsmeow helper will not be rebuilt. Run scripts/bootstrap.sh."
+            exit 0
+          fi
+          cd "$SRCROOT/WhatsmeowHelper"
+          mkdir -p bin
+          "$GO_BIN" build -o bin/whatsmeow-helper ./...
+        basedOnDependencyAnalysis: false
+        outputFiles:
+          - $(SRCROOT)/WhatsmeowHelper/bin/whatsmeow-helper
+    postBuildScripts:
+      - name: Bundle whatsmeow helper
+        script: |
+          set -euo pipefail
+          SRC="$SRCROOT/WhatsmeowHelper/bin/whatsmeow-helper"
+          DST="$TARGET_BUILD_DIR/$PRODUCT_NAME.app/Contents/Resources/whatsmeow-helper"
+          if [ ! -f "$SRC" ]; then
+            echo "warning: whatsmeow-helper binary missing — app will run without per-account connectivity"
+            exit 0
+          fi
+          mkdir -p "$(dirname "$DST")"
+          cp -f "$SRC" "$DST"
+          chmod +x "$DST"
+        basedOnDependencyAnalysis: false
 
   MultiverseWPTests:
     type: bundle.unit-test
