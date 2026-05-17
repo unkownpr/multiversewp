@@ -97,6 +97,9 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.semihsilistre.multiversewp.uitests
         TEST_TARGET_NAME: MultiverseWP
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "Apple Development"
+        DEVELOPMENT_TEAM: WGWRFNDZXL
 
 schemes:
   MultiverseWP:
