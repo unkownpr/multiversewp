@@ -1,5 +1,6 @@
 import Foundation
 import OSLog
+import os
 
 final class WAClientProcess: WAClient, @unchecked Sendable {
 
@@ -7,14 +8,16 @@ final class WAClientProcess: WAClient, @unchecked Sendable {
 
     var events: AsyncStream<WAClientEvent> { eventStream }
 
+    private struct State {
+        var process: Process?
+        var stdin: FileHandle?
+        var pendingResponses: [String: CheckedContinuation<WireResponse, Error>] = [:]
+    }
+
     private let helperLocator: HelperBinaryLocator
     private let keychain: KeychainStore
     private let log = AppLog.make("WAClient")
-    private let queue = DispatchQueue(label: "com.semihsilistre.multiversewp.waclient")
-
-    private var process: Process?
-    private var stdin: FileHandle?
-    private var pendingResponses: [String: CheckedContinuation<WireResponse, Error>] = [:]
+    private let state = OSAllocatedUnfairLock(initialState: State())
 
     private let eventStream: AsyncStream<WAClientEvent>
     private let eventContinuation: AsyncStream<WAClientEvent>.Continuation
@@ -30,11 +33,13 @@ final class WAClientProcess: WAClient, @unchecked Sendable {
 
     deinit {
         eventContinuation.finish()
-        process?.terminate()
+        state.withLock { $0.process?.terminate() }
     }
 
     func connect() async throws {
-        guard process == nil else { return }
+        let alreadyRunning = state.withLock { $0.process != nil }
+        guard !alreadyRunning else { return }
+
         guard let url = helperLocator.resolve() else {
             throw WAClientError.helperBinaryMissing(nil)
         }
@@ -65,8 +70,11 @@ final class WAClientProcess: WAClient, @unchecked Sendable {
         } catch {
             throw WAClientError.helperLaunchFailed(error.localizedDescription)
         }
-        process = proc
-        stdin = stdinPipe.fileHandleForWriting
+
+        state.withLock {
+            $0.process = proc
+            $0.stdin = stdinPipe.fileHandleForWriting
+        }
 
         startReader(stdoutPipe.fileHandleForReading)
         startStderrLogger(stderrPipe.fileHandleForReading)
@@ -76,9 +84,17 @@ final class WAClientProcess: WAClient, @unchecked Sendable {
 
     func disconnect() async {
         try? await send(.disconnect)
-        process?.terminate()
-        process = nil
-        stdin = nil
+        let pending: [CheckedContinuation<WireResponse, Error>] = state.withLock { state in
+            state.process?.terminate()
+            state.process = nil
+            state.stdin = nil
+            let drained = Array(state.pendingResponses.values)
+            state.pendingResponses.removeAll()
+            return drained
+        }
+        for continuation in pending {
+            continuation.resume(throwing: WAClientError.notConnected)
+        }
         eventContinuation.yield(.disconnected(reason: nil))
     }
 
@@ -126,24 +142,30 @@ final class WAClientProcess: WAClient, @unchecked Sendable {
     private func call(_ command: WireCommand) async throws -> WireResponse {
         let envelope = WireEnvelope(id: UUID().uuidString, command: command)
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<WireResponse, Error>) in
-            queue.async {
-                self.pendingResponses[envelope.id] = continuation
-                do {
-                    try self.transmit(envelope)
-                } catch {
-                    self.pendingResponses.removeValue(forKey: envelope.id)
-                    continuation.resume(throwing: error)
+            state.withLock { $0.pendingResponses[envelope.id] = continuation }
+            do {
+                try transmit(envelope)
+            } catch {
+                let removed: CheckedContinuation<WireResponse, Error>? = state.withLock {
+                    $0.pendingResponses.removeValue(forKey: envelope.id)
                 }
+                removed?.resume(throwing: error)
             }
         }
     }
 
     private func transmit(_ envelope: WireEnvelope) throws {
-        guard let stdin else { throw WAClientError.notConnected }
+        let handle = state.withLock { $0.stdin }
+        guard let handle else { throw WAClientError.notConnected }
         let data = try WireEncoder.encode(envelope)
         var payload = data
-        payload.append(0x0A) // newline delimiter
-        try stdin.write(contentsOf: payload)
+        payload.append(0x0A)
+        do {
+            try handle.write(contentsOf: payload)
+        } catch {
+            eventContinuation.yield(.error("transmit failed: \(error.localizedDescription)"))
+            throw error
+        }
     }
 
     private func startReader(_ handle: FileHandle) {
@@ -162,9 +184,10 @@ final class WAClientProcess: WAClient, @unchecked Sendable {
 
     private func startStderrLogger(_ handle: FileHandle) {
         handle.readabilityHandler = { [weak self] handle in
+            guard let self else { return }
             let chunk = handle.availableData
             guard !chunk.isEmpty, let string = String(data: chunk, encoding: .utf8) else { return }
-            self?.log.error("helper stderr: \(string, privacy: .public)")
+            self.log.error("helper stderr: \(string, privacy: .public)")
         }
     }
 
@@ -173,9 +196,10 @@ final class WAClientProcess: WAClient, @unchecked Sendable {
             let message = try WireDecoder.decode(line)
             switch message {
             case .response(let id, let response):
-                if let continuation = pendingResponses.removeValue(forKey: id) {
-                    continuation.resume(returning: response)
+                let continuation: CheckedContinuation<WireResponse, Error>? = state.withLock {
+                    $0.pendingResponses.removeValue(forKey: id)
                 }
+                continuation?.resume(returning: response)
             case .event(let event):
                 eventContinuation.yield(event)
             }
