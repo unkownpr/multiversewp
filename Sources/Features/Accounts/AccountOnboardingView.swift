@@ -74,7 +74,7 @@ struct AccountOnboardingView: View {
         }
         .padding(24)
         .frame(minWidth: 320, minHeight: 320)
-        .background(.white, in: RoundedRectangle(cornerRadius: 16))
+        .background(WATheme.Colors.incomingBubble, in: RoundedRectangle(cornerRadius: 16))
         .shadow(color: .black.opacity(0.25), radius: 18, y: 10)
     }
 

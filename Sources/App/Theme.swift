@@ -1,38 +1,79 @@
+import AppKit
 import SwiftUI
+
+extension Color {
+    /// Build an adaptive color that resolves differently in light and dark mode.
+    init(light: NSColor, dark: NSColor) {
+        let dynamic = NSColor(name: nil) { appearance in
+            let darkMatch = appearance.bestMatch(from: [.darkAqua, .vibrantDark, .accessibilityHighContrastDarkAqua])
+            return darkMatch != nil ? dark : light
+        }
+        self.init(nsColor: dynamic)
+    }
+}
+
+extension NSColor {
+    /// Construct an NSColor from a 24-bit hex literal (0xRRGGBB).
+    static func hex(_ value: UInt32) -> NSColor {
+        NSColor(
+            red: CGFloat((value >> 16) & 0xFF) / 255.0,
+            green: CGFloat((value >> 8) & 0xFF) / 255.0,
+            blue: CGFloat(value & 0xFF) / 255.0,
+            alpha: 1.0
+        )
+    }
+}
 
 enum WATheme {
 
     enum Colors {
-        // Canonical WhatsApp hex values. Documented at brand.whatsapp.com.
-        // #25D366 — primary brand green (used as send button + accent dots).
-        static let accent = Color(red: 0x25 / 255.0, green: 0xD3 / 255.0, blue: 0x66 / 255.0)
-        // #075E54 — classic WhatsApp dark teal (top bar / sidebar accent).
-        static let accentDark = Color(red: 0x07 / 255.0, green: 0x5E / 255.0, blue: 0x54 / 255.0)
-        // #128C7E — mid teal (links, secondary accent).
-        static let accentMid = Color(red: 0x12 / 255.0, green: 0x8C / 255.0, blue: 0x7E / 255.0)
-        // #DCF8C6 — outgoing bubble fill.
-        static let accentSoft = Color(red: 0xDC / 255.0, green: 0xF8 / 255.0, blue: 0xC6 / 255.0)
+        // Brand greens that read identically in both color schemes.
+        static let accent = Color(nsColor: .hex(0x25D366))
+        static let accentDark = Color(nsColor: .hex(0x075E54))
+        static let accentMid = Color(nsColor: .hex(0x128C7E))
+        static let accentSoft = Color(nsColor: .hex(0xDCF8C6))
 
-        // #EFEAE2 — modern WhatsApp Desktop chat wallpaper (parchment).
-        static let chatBackground = Color(red: 0xEF / 255.0, green: 0xEA / 255.0, blue: 0xE2 / 255.0)
+        // Conversation canvas — parchment in light, near-black in dark.
+        static let chatBackground = Color(
+            light: .hex(0xEFEAE2),
+            dark:  .hex(0x0B141A)
+        )
 
         // Bubble fills.
-        static let outgoingBubble = Color(red: 0xD9 / 255.0, green: 0xFD / 255.0, blue: 0xD6 / 255.0)
-        static let incomingBubble = Color.white
+        static let outgoingBubble = Color(
+            light: .hex(0xD9FDD6),
+            dark:  .hex(0x005C4B)
+        )
+        static let incomingBubble = Color(
+            light: .white,
+            dark:  .hex(0x202C33)
+        )
+        /// High-contrast text painted on top of bubbles.
+        static let bubbleText = Color(
+            light: .black,
+            dark:  .white
+        )
 
-        // Sidebar / surface chrome (multi-account strip stays dark teal so
-        // multiple accounts read at a glance — single-account WhatsApp uses
-        // a light sidebar; we keep the dark variant for differentiation).
-        static let sidebar = Color(red: 0x07 / 255.0, green: 0x5E / 255.0, blue: 0x54 / 255.0)
-        // #F0F2F5 — neutral list / header surface used across WhatsApp Desktop.
-        static let listSurface = Color(red: 0xF0 / 255.0, green: 0xF2 / 255.0, blue: 0xF5 / 255.0)
-        static let detailHeader = Color(red: 0xF0 / 255.0, green: 0xF2 / 255.0, blue: 0xF5 / 255.0)
+        // Account strip — dark teal in light, near-black in dark.
+        static let sidebar = Color(
+            light: .hex(0x075E54),
+            dark:  .hex(0x0A1014)
+        )
 
-        // Status colors.
-        // #34B7F1 — blue double-check read receipts.
-        static let readReceipt = Color(red: 0x34 / 255.0, green: 0xB7 / 255.0, blue: 0xF1 / 255.0)
-        // #25D366 — online indicator.
-        static let onlineBadge = Color(red: 0x25 / 255.0, green: 0xD3 / 255.0, blue: 0x66 / 255.0)
+        // Neutral surface used for the chat-list pane and both header bands.
+        static let listSurface = Color(
+            light: .hex(0xF0F2F5),
+            dark:  .hex(0x111B21)
+        )
+        static let detailHeader = Color(
+            light: .hex(0xF0F2F5),
+            dark:  .hex(0x202C33)
+        )
+
+        /// Blue double-check read receipts.
+        static let readReceipt = Color(nsColor: .hex(0x34B7F1))
+        /// Online indicator.
+        static let onlineBadge = Color(nsColor: .hex(0x25D366))
     }
 
     enum Metrics {

@@ -136,7 +136,7 @@ private struct MessageBubble: View {
             }
             Text(message.body ?? placeholder)
                 .font(.system(size: 14))
-                .foregroundStyle(.black)
+                .foregroundStyle(WATheme.Colors.bubbleText)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 12)
