@@ -110,7 +110,11 @@ struct ChatListColumn: View {
             .scrollContentBackground(.hidden)
             .background(WATheme.Colors.listSurface)
             .task(id: accountID) {
-                await viewModel.load(accountID: accountID, storage: environment.storage)
+                await viewModel.load(
+                    accountID: accountID,
+                    storage: environment.storage,
+                    eventBus: environment.eventBus
+                )
             }
         }
     }

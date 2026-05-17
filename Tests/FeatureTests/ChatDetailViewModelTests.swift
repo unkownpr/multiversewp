@@ -16,7 +16,7 @@ final class ChatDetailViewModelTests: XCTestCase {
         client.sendMessageReturn = "remote-123"
 
         let vm = ChatDetailViewModel()
-        await vm.load(chatID: chat.id, storage: storage, clientProvider: { _ in client })
+        await vm.load(chatID: chat.id, storage: storage, clientProvider: { _ in client }, eventBus: EventBus())
 
         await vm.sendText("Hello!")
 
@@ -38,7 +38,7 @@ final class ChatDetailViewModelTests: XCTestCase {
 
         let client = MockWAClient(accountID: account.id)
         let vm = ChatDetailViewModel()
-        await vm.load(chatID: chat.id, storage: storage, clientProvider: { _ in client })
+        await vm.load(chatID: chat.id, storage: storage, clientProvider: { _ in client }, eventBus: EventBus())
 
         await vm.sendText("   ")
         XCTAssertEqual(client.sentMessages.count, 0)

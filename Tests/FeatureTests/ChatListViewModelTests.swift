@@ -17,7 +17,7 @@ final class ChatListViewModelTests: XCTestCase {
         )
 
         let vm = ChatListViewModel()
-        await vm.load(accountID: account.id, storage: storage)
+        await vm.load(accountID: account.id, storage: storage, eventBus: EventBus())
         XCTAssertEqual(vm.chats.count, 2)
     }
 
@@ -30,7 +30,7 @@ final class ChatListViewModelTests: XCTestCase {
         try await storage.chats.upsert(Chat(id: "c2", accountID: account.id, jid: "b", title: "Bob"))
 
         let vm = ChatListViewModel()
-        await vm.load(accountID: account.id, storage: storage)
+        await vm.load(accountID: account.id, storage: storage, eventBus: EventBus())
         XCTAssertEqual(vm.filteredChats(query: "ali").count, 1)
         XCTAssertEqual(vm.filteredChats(query: "").count, 2)
     }

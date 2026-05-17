@@ -202,11 +202,22 @@ private struct MCPTab: View {
                     }
                     .padding(.vertical, 4)
                 }
-                GroupBox("Once enabled") {
+                GroupBox("How you'll use it") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Once Phase 3 ships:").font(.callout.weight(.medium))
+                        bullet("Launch `MultiverseWP --mcp` to attach the stdio MCP server to any AI client.")
+                        bullet("Or hit \"Install for Claude Desktop\" here and the config entry lands in `~/Library/Application Support/Claude/claude_desktop_config.json` automatically.")
+                        bullet("Then ask your assistant things like \"summarise my unread chats today\", \"draft a reply in the family group\", or \"search every conversation for the dentist appointment\".")
+                        bullet("Each write action triggers a per-chat consent prompt the first time; you can grant auto-approve for 1 hour per chat.")
+                    }
+                    .padding(.vertical, 6)
+                }
+                GroupBox("Configurable here later") {
                     VStack(alignment: .leading, spacing: 6) {
-                        bullet("Toggle the stdio MCP server on or off here")
-                        bullet("Auto-install the Claude Desktop config entry")
-                        bullet("Per-chat auto-approval for send_message")
+                        bullet("Toggle the stdio MCP server on / off")
+                        bullet("Auto-install Claude Desktop config")
+                        bullet("Manage per-chat auto-approval list")
+                        bullet("View live MCP traffic / last 50 tool calls")
                     }
                     .padding(.vertical, 6)
                 }
@@ -234,7 +245,7 @@ private struct AboutTab: View {
     }
 
     var body: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 16) {
             Spacer()
             ZStack {
                 Circle()
@@ -254,16 +265,39 @@ private struct AboutTab: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: 380)
-            Button {
-                NSWorkspace.shared.open(
-                    URL(fileURLWithPath: NSHomeDirectory())
-                        .appendingPathComponent("Library/Application Support/MultiverseWP")
-                )
-            } label: {
-                Label("Open data folder", systemImage: "folder")
+
+            VStack(spacing: 6) {
+                Text("Built by Semih Silistre")
+                    .font(.callout)
+                if let url = URL(string: "https://ssilistre.dev") {
+                    Link(destination: url) {
+                        Label("ssilistre.dev", systemImage: "globe")
+                            .font(.callout.weight(.medium))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(WATheme.Colors.accentMid)
+                }
+            }
+
+            HStack(spacing: 12) {
+                Button {
+                    NSWorkspace.shared.open(
+                        URL(fileURLWithPath: NSHomeDirectory())
+                            .appendingPathComponent("Library/Application Support/MultiverseWP")
+                    )
+                } label: {
+                    Label("Data folder", systemImage: "folder")
+                }
+                Button {
+                    if let url = URL(string: "https://github.com/semihsilistre/multiversewp") {
+                        NSWorkspace.shared.open(url)
+                    }
+                } label: {
+                    Label("GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
+                }
             }
             Spacer()
-            Text("© 2026 Semih Silistre")
+            Text("© 2026 Semih Silistre · ssilistre.dev")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }

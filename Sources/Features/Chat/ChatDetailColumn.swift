@@ -28,7 +28,8 @@ struct ChatDetailColumn: View {
                 await viewModel.load(
                     chatID: chatID,
                     storage: environment.storage,
-                    clientProvider: { environment.client(for: $0) }
+                    clientProvider: { environment.client(for: $0) },
+                    eventBus: environment.eventBus
                 )
             }
         } else {
