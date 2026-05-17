@@ -121,5 +121,14 @@ enum Migrations {
                 END;
             """)
         }
+
+        // Adds the `is_demo` flag so we can distinguish the seeded welcome
+        // account from real linked WhatsApp accounts. Real rows default to
+        // `false`; the seeder explicitly writes `true` for the demo account.
+        migrator.registerMigration("v2_demo_flag") { db in
+            try db.alter(table: "account") { t in
+                t.add(column: "is_demo", .boolean).notNull().defaults(to: false)
+            }
+        }
     }
 }

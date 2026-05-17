@@ -68,16 +68,23 @@ final class AppEnvironment: ObservableObject {
             try storage.migrateIfNeeded()
             try await healEmptyAccountNames()
             try await healChatTitles()
+            // Seed the welcome / demo account *before* the empty-check decides
+            // whether to pop the onboarding sheet, so the user always sees
+            // something useful on first launch. The helper is idempotent and
+            // skips itself once `multiversewp.demoSeeded` is set.
+            try await seedDemoAccountIfFirstLaunch()
             accounts = try await storage.accounts.allAccounts()
-            if accounts.isEmpty {
+            // Onboarding sheet still appears if the user only has the demo
+            // account — otherwise they would think the seeded "MultiverseWP
+            // Demo" entry is a real linked WhatsApp.
+            if !DemoSeed.hasRealAccounts(accounts) {
                 pendingOnboarding = OnboardingRequest()
-            } else {
-                selectedAccountID = accounts.first?.id
-                for account in accounts {
-                    let client = self.client(for: account.id)
-                    ingestion.subscribe(account: account, client: client)
-                    Task { try? await client.connect() }
-                }
+            }
+            selectedAccountID = accounts.first?.id
+            for account in accounts where !account.isDemo {
+                let client = self.client(for: account.id)
+                ingestion.subscribe(account: account, client: client)
+                Task { try? await client.connect() }
             }
             if !isUITest {
                 await notifications.requestAuthorizationIfNeeded()
@@ -86,6 +93,30 @@ final class AppEnvironment: ObservableObject {
         } catch {
             log.error("Bootstrap failed: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    /// Seeds the welcome / demo account on first launch only. Tracks the
+    /// "already done" state in `@AppStorage("multiversewp.demoSeeded")` so the
+    /// user removing the demo from Settings → Accounts is final.
+    ///
+    /// Skipped under UI-test mode so the existing first-launch onboarding
+    /// assertions remain deterministic.
+    func seedDemoAccountIfFirstLaunch() async throws {
+        if isUITest { return }
+        let key = "multiversewp.demoSeeded"
+        let defaults = UserDefaults.standard
+        if defaults.bool(forKey: key) { return }
+        let existing = try await storage.accounts.allAccounts()
+        // If a real account already exists from a previous build that
+        // pre-dates this seeder, skip — we never want demo rows to appear
+        // alongside live data the user has already linked.
+        guard existing.isEmpty else {
+            defaults.set(true, forKey: key)
+            return
+        }
+        _ = try await DemoSeed.seed(into: storage)
+        defaults.set(true, forKey: key)
+        log.info("Seeded MultiverseWP demo account")
     }
 
     func requestAddAccount() {

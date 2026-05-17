@@ -92,12 +92,20 @@ private struct AccountChip: View {
                         .stroke(isSelected ? Color.white : .clear, lineWidth: 2)
                 )
 
-                statusDot
-                    .offset(x: 2, y: 2)
+                // Demo accounts get a sparkle glyph instead of the green
+                // status dot so they're visually distinguishable but still
+                // recognisable as a usable account.
+                if account.isDemo {
+                    demoBadge
+                        .offset(x: 2, y: 2)
+                } else {
+                    statusDot
+                        .offset(x: 2, y: 2)
+                }
             }
         }
         .buttonStyle(.plain)
-        .help(account.displayName)
+        .help(account.isDemo ? "\(account.displayName) (welcome tour)" : account.displayName)
         .accessibilityIdentifier("AccountRow_\(account.id.uuidString)")
         .accessibilityLabel(Text("\(account.displayName), \(statusLabel)"))
     }
@@ -107,6 +115,18 @@ private struct AccountChip: View {
             .fill(statusColor)
             .frame(width: 12, height: 12)
             .overlay(Circle().stroke(WATheme.Colors.sidebar, lineWidth: 2))
+    }
+
+    private var demoBadge: some View {
+        ZStack {
+            Circle()
+                .fill(WATheme.Colors.sidebar)
+                .frame(width: 16, height: 16)
+            Image(systemName: "sparkles")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.yellow)
+        }
+        .accessibilityHidden(true)
     }
 
     private var statusColor: Color {
@@ -119,12 +139,13 @@ private struct AccountChip: View {
     }
 
     private var statusLabel: String {
+        if account.isDemo { return "Welcome tour" }
         switch account.connectionState {
-        case .disconnected: "Offline"
-        case .awaitingQR: "Awaiting QR scan"
-        case .connecting: "Connecting"
-        case .connected: "Online"
-        case .unauthorized: "Re-link required"
+        case .disconnected: return "Offline"
+        case .awaitingQR: return "Awaiting QR scan"
+        case .connecting: return "Connecting"
+        case .connected: return "Online"
+        case .unauthorized: return "Re-link required"
         }
     }
 }

@@ -151,7 +151,7 @@ public final class MCPServer: @unchecked Sendable {
 
     private func toolsListResult() -> [String: JSONValue] {
         let descriptors: [MCPToolDescriptor] = [
-            .listAccounts, .listChats, .getMessages, .searchMessages
+            .listAccounts, .listChats, .getMessages, .searchMessages, .downloadMediaNow
         ]
         return [
             "tools": .array(descriptors.map { $0.toolEntry })
@@ -180,6 +180,8 @@ public final class MCPServer: @unchecked Sendable {
             payload = try await runGetMessages(args: argsDict)
         case MCPToolDescriptor.searchMessages.name:
             payload = try await runSearchMessages(args: argsDict)
+        case MCPToolDescriptor.downloadMediaNow.name:
+            payload = try await runDownloadMediaNow(args: argsDict)
         default:
             throw MCPError(code: -32602, message: "Unknown tool: \(toolName)")
         }
@@ -239,7 +241,7 @@ public final class MCPServer: @unchecked Sendable {
         let before = try optionalDate(args["before"], field: "before")
         let limit = try clampedInt(args["limit"], field: "limit", default: 50, min: 1, max: 200)
         let messages = try await storage.messages(chatID: chatID, before: before, limit: limit)
-        return .array(messages.map(messageJSON(_:)))
+        return try await annotated(messages: messages)
     }
 
     func runSearchMessages(args: [String: JSONValue]) async throws -> JSONValue {
@@ -250,10 +252,24 @@ public final class MCPServer: @unchecked Sendable {
         let chatID = try optionalString(args["chat_id"], field: "chat_id")
         let limit = try clampedInt(args["limit"], field: "limit", default: 25, min: 1, max: 100)
         let messages = try await storage.search(query: query, accountID: accountID, chatID: chatID, limit: limit)
-        return .array(messages.map(messageJSON(_:)))
+        return try await annotated(messages: messages)
     }
 
-    private func messageJSON(_ message: Message) -> JSONValue {
+    /// Resolves each message's optional MediaItem ahead of JSON encoding so
+    /// `messageJSON` stays synchronous. Hits a single index lookup per row —
+    /// fine for the read-only tool surface which is bounded by `limit`.
+    private func annotated(messages: [Message]) async throws -> JSONValue {
+        var paths: [Message.ID: String] = [:]
+        for message in messages {
+            guard let mediaID = message.mediaID else { continue }
+            if let item = try await storage.media(id: mediaID) {
+                if let path = item.localPath { paths[message.id] = path }
+            }
+        }
+        return .array(messages.map { messageJSON($0, mediaPath: paths[$0.id]) })
+    }
+
+    private func messageJSON(_ message: Message, mediaPath: String? = nil) -> JSONValue {
         .object([
             "id": .string(message.id),
             "chat_id": .string(message.chatID),
@@ -262,8 +278,28 @@ public final class MCPServer: @unchecked Sendable {
             "direction": .string(message.direction.rawValue),
             "kind": .string(message.kind.rawValue),
             "body": jsonNullable(message.body),
+            "media_path": jsonNullable(mediaPath),
             "timestamp": .string(isoFormatter.string(from: message.timestamp)),
             "delivery_status": .string(message.deliveryStatus.rawValue)
+        ])
+    }
+
+    /// Read-only equivalent of the helper's `download_media` command. Returns
+    /// the existing on-disk path if the media row already has one; otherwise
+    /// signals to the caller that they need to use the in-app affordance to
+    /// trigger a fresh decryption — the MCP layer intentionally never spawns
+    /// a write path of its own.
+    func runDownloadMediaNow(args: [String: JSONValue]) async throws -> JSONValue {
+        guard let messageID = try optionalString(args["message_id"], field: "message_id"),
+              !messageID.isEmpty
+        else {
+            throw MCPError(code: -32602, message: "Missing required parameter: message_id")
+        }
+        let item = try await storage.media(id: messageID)
+        return .object([
+            "message_id": .string(messageID),
+            "media_path": jsonNullable(item?.localPath),
+            "download_status": .string(item?.downloadStatus.rawValue ?? "unknown")
         ])
     }
 
@@ -393,27 +429,38 @@ public final class MCPReadOnlyStorage: @unchecked Sendable {
         return MCPReadOnlyStorage(dbPool: pool)
     }
 
+    /// Demo accounts (welcome/onboarding seeded rows) are never surfaced to MCP
+    /// clients — AI assistants must only see real WhatsApp data. Every query
+    /// below applies the same `is_demo = 0` filter, either directly on `account`
+    /// or via a join.
     func allAccounts() async throws -> [Account] {
         try await dbPool.read { db in
-            try Row.fetchAll(db, sql: "SELECT * FROM account ORDER BY created_at ASC").map(Self.account(from:))
+            try Row.fetchAll(
+                db,
+                sql: "SELECT * FROM account WHERE is_demo = 0 ORDER BY created_at ASC"
+            ).map(Self.account(from:))
         }
     }
 
     func chats(accountID: UUID?, query: String?, limit: Int) async throws -> [Chat] {
         try await dbPool.read { db in
-            var sql = "SELECT * FROM chat WHERE is_archived = 0"
+            var sql = """
+                SELECT c.* FROM chat c
+                JOIN account a ON a.id = c.account_id
+                WHERE c.is_archived = 0 AND a.is_demo = 0
+                """
             var arguments: [(any DatabaseValueConvertible)?] = []
             if let accountID {
-                sql += " AND account_id = ?"
+                sql += " AND c.account_id = ?"
                 arguments.append(accountID.uuidString)
             }
             if let query, !query.isEmpty {
-                sql += " AND (title LIKE ? OR jid LIKE ?)"
+                sql += " AND (c.title LIKE ? OR c.jid LIKE ?)"
                 let like = "%\(query)%"
                 arguments.append(like)
                 arguments.append(like)
             }
-            sql += " ORDER BY last_message_timestamp DESC NULLS LAST, title ASC LIMIT ?"
+            sql += " ORDER BY c.last_message_timestamp DESC NULLS LAST, c.title ASC LIMIT ?"
             arguments.append(limit)
             return try Row.fetchAll(db, sql: sql, arguments: StatementArguments(arguments)).map(Self.chat(from:))
         }
@@ -425,9 +472,10 @@ public final class MCPReadOnlyStorage: @unchecked Sendable {
                 return try Row.fetchAll(
                     db,
                     sql: """
-                    SELECT * FROM message
-                    WHERE chat_id = ? AND timestamp < ? AND is_deleted = 0
-                    ORDER BY timestamp DESC LIMIT ?
+                    SELECT m.* FROM message m
+                    JOIN account a ON a.id = m.account_id
+                    WHERE m.chat_id = ? AND m.timestamp < ? AND m.is_deleted = 0 AND a.is_demo = 0
+                    ORDER BY m.timestamp DESC LIMIT ?
                     """,
                     arguments: [chatID, before, limit]
                 ).map(Self.message(from:))
@@ -435,9 +483,10 @@ public final class MCPReadOnlyStorage: @unchecked Sendable {
                 return try Row.fetchAll(
                     db,
                     sql: """
-                    SELECT * FROM message
-                    WHERE chat_id = ? AND is_deleted = 0
-                    ORDER BY timestamp DESC LIMIT ?
+                    SELECT m.* FROM message m
+                    JOIN account a ON a.id = m.account_id
+                    WHERE m.chat_id = ? AND m.is_deleted = 0 AND a.is_demo = 0
+                    ORDER BY m.timestamp DESC LIMIT ?
                     """,
                     arguments: [chatID, limit]
                 ).map(Self.message(from:))
@@ -451,8 +500,10 @@ public final class MCPReadOnlyStorage: @unchecked Sendable {
             var sql = """
                 SELECT m.* FROM message m
                 JOIN message_fts f ON f.message_id = m.id
+                JOIN account a ON a.id = m.account_id
                 WHERE message_fts MATCH ?
                 AND m.is_deleted = 0
+                AND a.is_demo = 0
             """
             var arguments: [(any DatabaseValueConvertible)?] = [pattern]
             if let accountID {
@@ -469,6 +520,32 @@ public final class MCPReadOnlyStorage: @unchecked Sendable {
         }
     }
 
+    /// Single-row media lookup. Mirrors `MediaRepository.media(id:)` but stays
+    /// inside the read-only facade so the MCP tools cannot accidentally fall
+    /// back to the writer pool.
+    func media(id: String) async throws -> MediaItem? {
+        try await dbPool.read { db in
+            try Row.fetchOne(db, sql: "SELECT * FROM media WHERE id = ?", arguments: [id])
+                .map(Self.mediaItem(from:))
+        }
+    }
+
+    private static func mediaItem(from row: Row) -> MediaItem {
+        MediaItem(
+            id: row["id"],
+            accountID: UUID(uuidString: row["account_id"]) ?? UUID(),
+            mimeType: row["mime_type"],
+            byteSize: row["byte_size"],
+            width: row["width"],
+            height: row["height"],
+            durationSeconds: row["duration_seconds"],
+            localPath: row["local_path"],
+            remoteURL: (row["remote_url"] as String?).flatMap(URL.init(string:)),
+            caption: row["caption"],
+            downloadStatus: MediaItem.DownloadStatus(rawValue: row["download_status"] ?? "") ?? .pending
+        )
+    }
+
     // MARK: - Row decoding (duplicate of the private extensions in Repositories+GRDB.swift)
 
     private static func account(from row: Row) -> Account {
@@ -482,7 +559,8 @@ public final class MCPReadOnlyStorage: @unchecked Sendable {
             connectionState: Account.ConnectionState(rawValue: row["connection_state"] ?? "") ?? .disconnected,
             createdAt: row["created_at"],
             lastConnectedAt: row["last_connected_at"],
-            notificationsEnabled: row["notifications_enabled"]
+            notificationsEnabled: row["notifications_enabled"],
+            isDemo: (row["is_demo"] as Bool?) ?? false
         )
     }
 
@@ -600,6 +678,23 @@ struct MCPToolDescriptor {
                 ])
             ]),
             "required": .array([.string("chat_id")]),
+            "additionalProperties": .bool(false)
+        ])
+    )
+
+    static let downloadMediaNow = MCPToolDescriptor(
+        name: "download_media_now",
+        title: "Resolve the on-disk path of a media message",
+        description: "Returns the local filesystem path for a previously-downloaded media message (image / video / audio / document). Read-only — does NOT trigger a fresh decryption. If the bytes are not yet on disk, the response contains a null media_path and download_status='pending', and the caller should ask the user to tap Download in the app.",
+        inputSchema: .object([
+            "type": .string("object"),
+            "properties": .object([
+                "message_id": .object([
+                    "type": .string("string"),
+                    "description": .string("Message identifier whose media payload to resolve.")
+                ])
+            ]),
+            "required": .array([.string("message_id")]),
             "additionalProperties": .bool(false)
         ])
     )

@@ -13,6 +13,9 @@ public struct Account: Identifiable, Hashable, Codable, Sendable {
     public var createdAt: Date
     public var lastConnectedAt: Date?
     public var notificationsEnabled: Bool
+    /// Marks the seeded welcome / demo account. Real linked WhatsApp accounts
+    /// always store `false`. See `AppEnvironment.seedDemoAccountIfFirstLaunch()`.
+    public var isDemo: Bool
 
     public enum ConnectionState: String, Codable, Sendable, CaseIterable {
         case disconnected
@@ -32,7 +35,8 @@ public struct Account: Identifiable, Hashable, Codable, Sendable {
         connectionState: ConnectionState = .disconnected,
         createdAt: Date = .init(),
         lastConnectedAt: Date? = nil,
-        notificationsEnabled: Bool = true
+        notificationsEnabled: Bool = true,
+        isDemo: Bool = false
     ) {
         self.id = id
         self.displayName = displayName
@@ -44,6 +48,7 @@ public struct Account: Identifiable, Hashable, Codable, Sendable {
         self.createdAt = createdAt
         self.lastConnectedAt = lastConnectedAt
         self.notificationsEnabled = notificationsEnabled
+        self.isDemo = isDemo
     }
 }
 

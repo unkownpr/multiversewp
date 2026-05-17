@@ -13,7 +13,8 @@ private extension Account {
             connectionState: Account.ConnectionState(rawValue: row["connection_state"] ?? "") ?? .disconnected,
             createdAt: row["created_at"],
             lastConnectedAt: row["last_connected_at"],
-            notificationsEnabled: row["notifications_enabled"]
+            notificationsEnabled: row["notifications_enabled"],
+            isDemo: (row["is_demo"] as Bool?) ?? false
         )
     }
 
@@ -28,7 +29,8 @@ private extension Account {
             "connection_state": connectionState.rawValue,
             "created_at": createdAt,
             "last_connected_at": lastConnectedAt,
-            "notifications_enabled": notificationsEnabled
+            "notifications_enabled": notificationsEnabled,
+            "is_demo": isDemo
         ]
     }
 }
@@ -182,10 +184,10 @@ struct AccountsRepositoryGRDB: AccountsRepository {
                 sql: """
                 INSERT INTO account
                 (id, display_name, phone_number, jid, push_name, avatar_url, connection_state,
-                 created_at, last_connected_at, notifications_enabled)
+                 created_at, last_connected_at, notifications_enabled, is_demo)
                 VALUES
                 (:id, :display_name, :phone_number, :jid, :push_name, :avatar_url, :connection_state,
-                 :created_at, :last_connected_at, :notifications_enabled)
+                 :created_at, :last_connected_at, :notifications_enabled, :is_demo)
                 ON CONFLICT(id) DO UPDATE SET
                     display_name = excluded.display_name,
                     phone_number = excluded.phone_number,
@@ -194,7 +196,8 @@ struct AccountsRepositoryGRDB: AccountsRepository {
                     avatar_url = excluded.avatar_url,
                     connection_state = excluded.connection_state,
                     last_connected_at = excluded.last_connected_at,
-                    notifications_enabled = excluded.notifications_enabled
+                    notifications_enabled = excluded.notifications_enabled,
+                    is_demo = excluded.is_demo
                 """,
                 arguments: account.dbArguments()
             )
