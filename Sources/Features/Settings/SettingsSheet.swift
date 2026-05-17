@@ -279,6 +279,8 @@ private struct MCPTab: View {
 
 private struct AboutTab: View {
 
+    @EnvironmentObject private var updater: UpdaterController
+
     private var version: String {
         let dict = Bundle.main.infoDictionary
         let short = dict?["CFBundleShortVersionString"] as? String ?? "0.0.0"
@@ -302,6 +304,13 @@ private struct AboutTab: View {
                 Text("Version \(version)")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+                Button("Check for Updates Now") {
+                    updater.checkForUpdates(nil)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(!updater.canCheckForUpdates)
+                .padding(.top, 4)
             }
             Text("A native macOS WhatsApp client that handles multiple accounts and exposes a local MCP server for AI assistants. Personal-use project, planned open source.")
                 .multilineTextAlignment(.center)

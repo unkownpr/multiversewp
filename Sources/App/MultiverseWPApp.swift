@@ -4,6 +4,7 @@ import SwiftUI
 struct MultiverseWPApp: App {
 
     @StateObject private var environment = AppEnvironment.shared
+    @StateObject private var updater = UpdaterController()
 
     @SwiftUI.AppStorage("multiversewp.sidebarHidden") private var sidebarHidden: Bool = false
 
@@ -21,6 +22,7 @@ struct MultiverseWPApp: App {
         WindowGroup("MultiverseWP") {
             RootView()
                 .environmentObject(environment)
+                .environmentObject(updater)
                 .frame(minWidth: 980, minHeight: 620)
                 .task { await environment.bootstrap() }
         }
@@ -28,6 +30,12 @@ struct MultiverseWPApp: App {
         .windowResizability(.contentSize)
         .commands {
             CommandGroup(replacing: .newItem) {}
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") {
+                    updater.checkForUpdates(nil)
+                }
+                .disabled(!updater.canCheckForUpdates)
+            }
             CommandMenu("Account") {
                 Button("Add Account…") { environment.requestAddAccount() }
                     .keyboardShortcut("n", modifiers: [.command, .shift])

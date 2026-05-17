@@ -2,8 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <!--
+        Sandbox intentionally disabled until Sparkle 2.x XPC services and the
+        whatsmeow helper IPC are split into their own targets. Re-enable in a
+        future hardening pass: see docs/auto-update.md.
+    -->
     <key>com.apple.security.app-sandbox</key>
-    <true/>
+    <false/>
     <key>com.apple.security.network.client</key>
     <true/>
     <key>com.apple.security.files.user-selected.read-write</key>
@@ -12,5 +17,16 @@
     <true/>
     <key>com.apple.security.inherit</key>
     <true/>
+    <!--
+        The whatsmeow-helper writes decrypted media into
+        ~/Library/Application Support/MultiverseWP/sessions/<account>/media.
+        Reading those files from the sandboxed SwiftUI app requires an
+        explicit absolute-path exception. Read-only is sufficient: the helper
+        owns the write side.
+    -->
+    <key>com.apple.security.temporary-exception.files.absolute-path.read-only</key>
+    <array>
+        <string>/Users/</string>
+    </array>
 </dict>
 </plist>

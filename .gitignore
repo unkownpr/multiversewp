@@ -34,6 +34,10 @@ vendor/
 Secrets.plist
 Config.local.xcconfig
 
+## Sparkle EdDSA private keys — Keychain or CI secret only, NEVER on disk
+*.key
+sparkle_ed_*
+
 ## Logs / coverage
 *.log
 *.lcov
