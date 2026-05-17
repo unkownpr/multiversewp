@@ -53,13 +53,22 @@ struct AccountSidebar: View {
 
             Spacer(minLength: 0)
 
-            Image(systemName: "gearshape.fill")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.5))
-                .padding(.bottom, 16)
-                .accessibilityLabel("Settings")
+            Button {
+                NSWorkspace.shared.open(
+                    URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support/MultiverseWP")
+                )
+            } label: {
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+            .buttonStyle(.plain)
+            .help("Open MultiverseWP data folder (full settings pane in Phase 2)")
+            .accessibilityLabel("Settings")
+            .padding(.bottom, 16)
         }
         .frame(width: WATheme.Metrics.accountStripWidth)
+        .frame(maxHeight: .infinity)
         .background(WATheme.Colors.sidebar)
         .accessibilityIdentifier("AccountSidebar")
     }

@@ -12,7 +12,9 @@ struct ChatListColumn: View {
             searchBar
             Divider().opacity(0.4)
             content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(WATheme.Colors.listSurface)
         .accessibilityIdentifier("ChatListColumn")
     }

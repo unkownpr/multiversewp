@@ -37,7 +37,7 @@ enum WATheme {
 
     enum Metrics {
         static let bubbleCornerRadius: CGFloat = 12
-        static let accountStripWidth: CGFloat = 70
+        static let accountStripWidth: CGFloat = 84
         static let chatRowHeight: CGFloat = 72
         static let avatarSize: CGFloat = 44
         static let smallAvatarSize: CGFloat = 36

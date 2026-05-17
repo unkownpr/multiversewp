@@ -116,12 +116,17 @@ final class AppEnvironment: ObservableObject {
     func reloadAccounts() async {
         do {
             accounts = try await storage.accounts.allAccounts()
-            if let selected = selectedAccountID,
-               !accounts.contains(where: { $0.id == selected }) {
+            if selectedAccountID == nil {
+                selectedAccountID = accounts.first?.id
+            } else if let selected = selectedAccountID,
+                      !accounts.contains(where: { $0.id == selected }) {
                 selectedAccountID = accounts.first?.id
             }
-            for account in accounts where clients[account.id] == nil {
+            for account in accounts {
                 let client = self.client(for: account.id)
+                // subscribe is idempotent — it cancels any prior task before
+                // installing a new one, which is what we want after the
+                // onboarding view-model finishes its short-lived event loop.
                 ingestion.subscribe(account: account, client: client)
             }
         } catch {

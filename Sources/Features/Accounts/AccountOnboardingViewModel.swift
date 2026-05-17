@@ -45,18 +45,23 @@ final class AccountOnboardingViewModel: ObservableObject {
         let client = clientProvider(id)
         self.client = client
 
-        task = Task { [weak self] in
+        task = Task { @MainActor [weak self] in
             do {
                 try await client.connect()
             } catch {
-                await MainActor.run {
-                    self?.phase = .failed(reason: error.localizedDescription)
-                }
+                self?.phase = .failed(reason: error.localizedDescription)
                 return
             }
             for await event in client.events {
-                guard !Task.isCancelled else { break }
-                await self?.handle(event: event, storage: storage)
+                guard !Task.isCancelled, let self else { break }
+                await self.handle(event: event, storage: storage)
+                // Hand off to the long-lived MessageIngestionService once the
+                // onboarding handshake is over; otherwise we'd race the
+                // ingestion task on the same AsyncStream.
+                switch self.phase {
+                case .completed, .failed: return
+                default: break
+                }
             }
         }
     }
@@ -77,18 +82,28 @@ final class AccountOnboardingViewModel: ObservableObject {
         case .pairSuccess(let jid, let pushName):
             phase = .pairing
             do {
-                var account = Account(
+                let cleanedPush = pushName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let existing = try await storage.accounts.allAccounts().first(where: { $0.id == id })
+                let phonePrefix = String(jid.split(separator: "@").first ?? "")
+                let displayName: String
+                if !cleanedPush.isEmpty {
+                    displayName = cleanedPush
+                } else if let existing, !existing.displayName.isEmpty, existing.displayName != "My WhatsApp" {
+                    displayName = existing.displayName
+                } else if !phonePrefix.isEmpty {
+                    displayName = "+\(phonePrefix)"
+                } else {
+                    displayName = "My WhatsApp"
+                }
+                let account = Account(
                     id: id,
-                    displayName: pushName ?? "My WhatsApp",
+                    displayName: displayName,
+                    phoneNumber: phonePrefix.isEmpty ? nil : phonePrefix,
                     jid: jid,
-                    pushName: pushName,
+                    pushName: cleanedPush.isEmpty ? nil : cleanedPush,
                     connectionState: .connected,
                     lastConnectedAt: Date()
                 )
-                if pushName == nil, let existing = try await storage.accounts.allAccounts()
-                    .first(where: { $0.id == id }) {
-                    account.displayName = existing.displayName
-                }
                 try await storage.accounts.upsert(account)
                 phase = .completed(accountID: id)
             } catch {

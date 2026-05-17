@@ -9,10 +9,11 @@ struct MultiverseWPApp: App {
         WindowGroup("MultiverseWP") {
             RootView()
                 .environmentObject(environment)
-                .frame(minWidth: 900, minHeight: 600)
+                .frame(minWidth: 980, minHeight: 620)
                 .task { await environment.bootstrap() }
         }
         .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize)
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandMenu("Account") {
