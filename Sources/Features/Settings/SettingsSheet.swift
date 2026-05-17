@@ -175,49 +175,67 @@ private struct AccountsTab: View {
 }
 
 private struct MCPTab: View {
+
+    @State private var installMessage: InstallMessage?
+
+    private var executablePath: String { ClaudeDesktopInstaller.currentExecutablePath() }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Label("Model Context Protocol", systemImage: "brain")
                     .font(.title3.bold())
-                Text("MultiverseWP will expose its chat history, contacts, and send-message capability through a local MCP server so AI assistants — Claude Desktop, Claude Code, or any MCP-compatible client — can reach into your conversations with your explicit approval.")
+                Text("MultiverseWP ships with a local MCP server so AI assistants — Claude Desktop, Claude Code, or any MCP-compatible client — can read your WhatsApp history through a strictly read-only stdio bridge. Sending messages will arrive in a later milestone behind an explicit per-chat approval prompt.")
                     .foregroundStyle(.secondary)
-                GroupBox("Planned tools") {
-                    VStack(alignment: .leading, spacing: 6) {
-                        bullet("list_accounts — list every linked WhatsApp account")
-                        bullet("list_chats(account_id, query?) — list chats for one account")
-                        bullet("get_messages(chat_id, before?, limit) — fetch history")
-                        bullet("search_messages(query, scope?) — FTS5 over the local store")
-                        bullet("send_message(chat_id, text, attachments?) — explicit user approval prompt")
-                        bullet("list_contacts(account_id, query?) — contact lookup")
-                        bullet("download_media(message_id) — local file path back to the client")
+
+                GroupBox("Status") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 10) {
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 10, height: 10)
+                            Text("Available (read-only, run via --mcp flag)")
+                                .font(.callout.weight(.medium))
+                        }
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Executable").font(.caption).foregroundStyle(.secondary)
+                            Text(executablePath)
+                                .font(.caption.monospaced())
+                                .textSelection(.enabled)
+                                .foregroundStyle(.primary)
+                        }
+                        HStack(spacing: 10) {
+                            Button("Install for Claude Desktop") {
+                                installClaudeDesktopEntry()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            if let message = installMessage {
+                                Label(message.text, systemImage: message.systemImage)
+                                    .font(.caption)
+                                    .foregroundStyle(message.isError ? Color.red : Color.green)
+                            }
+                        }
                     }
                     .padding(.vertical, 6)
                 }
-                GroupBox("Status") {
-                    HStack(spacing: 10) {
-                        Image(systemName: "hammer.fill").foregroundStyle(.orange)
-                        Text("Phase 3 — not implemented yet. The server skeleton lands in the next milestone; the tool schemas above are frozen.")
-                            .foregroundStyle(.secondary)
+
+                GroupBox("Available tools") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        bullet("list_accounts — list every linked WhatsApp account")
+                        bullet("list_chats(account_id?, query?, limit?) — list chats")
+                        bullet("get_messages(chat_id, before?, limit?) — fetch history")
+                        bullet("search_messages(query, account_id?, chat_id?, limit?) — FTS5 over the local store")
+                        bullet("send_message — coming in a later milestone (explicit per-chat approval)")
+                        bullet("download_media — coming in a later milestone (explicit per-chat approval)")
                     }
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 6)
                 }
                 GroupBox("How you'll use it") {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Once Phase 3 ships:").font(.callout.weight(.medium))
                         bullet("Launch `MultiverseWP --mcp` to attach the stdio MCP server to any AI client.")
-                        bullet("Or hit \"Install for Claude Desktop\" here and the config entry lands in `~/Library/Application Support/Claude/claude_desktop_config.json` automatically.")
-                        bullet("Then ask your assistant things like \"summarise my unread chats today\", \"draft a reply in the family group\", or \"search every conversation for the dentist appointment\".")
-                        bullet("Each write action triggers a per-chat consent prompt the first time; you can grant auto-approve for 1 hour per chat.")
-                    }
-                    .padding(.vertical, 6)
-                }
-                GroupBox("Configurable here later") {
-                    VStack(alignment: .leading, spacing: 6) {
-                        bullet("Toggle the stdio MCP server on / off")
-                        bullet("Auto-install Claude Desktop config")
-                        bullet("Manage per-chat auto-approval list")
-                        bullet("View live MCP traffic / last 50 tool calls")
+                        bullet("Or hit \"Install for Claude Desktop\" above to drop the config entry into `~/Library/Application Support/Claude/claude_desktop_config.json` automatically.")
+                        bullet("Then ask your assistant things like \"summarise my unread chats today\" or \"search every conversation for the dentist appointment\".")
+                        bullet("Write tools (send_message, download_media) will require per-chat consent prompts when they ship in a later milestone.")
                     }
                     .padding(.vertical, 6)
                 }
@@ -227,11 +245,35 @@ private struct MCPTab: View {
         }
     }
 
+    private func installClaudeDesktopEntry() {
+        let installer = ClaudeDesktopInstaller()
+        switch installer.install() {
+        case .success(let url):
+            installMessage = InstallMessage(
+                text: "Installed at \(url.path)",
+                systemImage: "checkmark.circle.fill",
+                isError: false
+            )
+        case .failure(let error):
+            installMessage = InstallMessage(
+                text: "Install failed: \(error.localizedDescription)",
+                systemImage: "exclamationmark.triangle.fill",
+                isError: true
+            )
+        }
+    }
+
     private func bullet(_ text: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text("•").foregroundStyle(.secondary)
             Text(text)
         }
+    }
+
+    private struct InstallMessage {
+        let text: String
+        let systemImage: String
+        let isError: Bool
     }
 }
 
