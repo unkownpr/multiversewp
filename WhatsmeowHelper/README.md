@@ -31,11 +31,24 @@ the Swift `WAClientProcess` forwards to its `OSLog` channel.
 
 ## Status
 
-The current `main.go` is a **wire-protocol-complete stub**: it emits a fake QR
-every 15 seconds and acknowledges sends without actually contacting WhatsApp.
-This lets the Swift app build, run, and exercise the IPC path before the
-upstream `whatsmeow` dependency is fetched. Replace the simulated paths with
-real `*whatsmeow.Client` calls in a follow-up commit.
+The helper is wired to the real [`go.mau.fi/whatsmeow`](https://pkg.go.dev/go.mau.fi/whatsmeow)
+client. On a fresh `--session-dir` it drives the QR pairing flow via
+`Client.GetQRChannel` and emits each rotated code as a `qr` event the Swift
+side renders. After the phone scans, it emits `pair_success` with the real
+JID + push name and reconnects. Incoming `events.Message` payloads are
+translated into the frozen wire `message` envelope (text / image / video /
+audio / document / sticker), and `events.Receipt` events flow back as
+`delivery` updates.
 
-Tracking todo: wire `Connect`, `SendMessage`, `Download`, and `Events`
-on top of `go.mau.fi/whatsmeow`.
+`send_message` calls `Client.SendMessage` with a real `waE2E.Message`. The
+session lives in `<session-dir>/store.db` (SQLite, foreign_keys=on) and is
+owned by the macOS app, NOT shipped with the binary.
+
+### Still TODO
+- `fetch_history` — request a history sync / paginate from the local store
+- `download_media` — call `Client.Download` and write to
+  `<session-dir>/media/<message_id>`
+- `mark_read` — call `Client.MarkRead` with the chat's message IDs
+
+All three currently no-op (or return an explicit error for `download_media`)
+so the Swift side is not blocked.
