@@ -184,6 +184,15 @@ public final class MessageIngestionService {
         incoming: IncomingMessage,
         accountID: Account.ID
     ) async -> String {
+        // Self-chat ("Note to Self"): the WhatsApp account's own JID maps
+        // to a special conversation; pull the human label from the account
+        // record.
+        if let account = try? await storage.accounts.allAccounts().first(where: { $0.id == accountID }),
+           let ownJid = account.jid,
+           jidsMatch(incoming.chatJID, ownJid) {
+            return "You · Note to Self"
+        }
+
         // If the existing title already reads as a human label, keep it.
         if let existing, !looksLikeJIDTitle(existing.title, jid: existing.jid) {
             return existing.title
@@ -209,6 +218,15 @@ public final class MessageIngestionService {
 
         // Last resort — format the JID local part as a phone number.
         return defaultChatTitle(jid: incoming.chatJID, sender: incoming.senderPushName)
+    }
+
+    /// Compare two JIDs ignoring optional `:device` suffixes and server parts.
+    private func jidsMatch(_ lhs: String, _ rhs: String) -> Bool {
+        func canonical(_ jid: String) -> String {
+            let userServer = jid.split(separator: "@").first.map(String.init) ?? jid
+            return String(userServer.split(separator: ":").first ?? Substring(userServer))
+        }
+        return canonical(lhs) == canonical(rhs)
     }
 
     private func looksLikeJIDTitle(_ title: String, jid: String) -> Bool {

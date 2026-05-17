@@ -130,6 +130,15 @@ final class AppEnvironment: ObservableObject {
         for account in accountList {
             let chats = try await storage.chats.chats(forAccount: account.id)
             for chat in chats where !chat.isGroup {
+                // Self-chat ("Note to Self"): map the account's own JID.
+                if let ownJid = account.jid, jidsCanonical(chat.jid) == jidsCanonical(ownJid) {
+                    if chat.title != "You · Note to Self" {
+                        var renamed = chat
+                        renamed.title = "You · Note to Self"
+                        try await storage.chats.upsert(renamed)
+                    }
+                    continue
+                }
                 guard chatTitleLooksNumeric(chat.title, jid: chat.jid) else { continue }
                 if let contact = try await storage.contacts.contact(jid: chat.jid, accountID: account.id) {
                     let display = contact.displayName
@@ -137,10 +146,40 @@ final class AppEnvironment: ObservableObject {
                         var renamed = chat
                         renamed.title = display
                         try await storage.chats.upsert(renamed)
+                        continue
                     }
+                }
+                // No contact record yet — at least format the bare phone as
+                // "+90 555 123 45 67" style so the row is readable.
+                let pretty = prettyPhone(from: chat.jid)
+                if pretty != chat.title {
+                    var renamed = chat
+                    renamed.title = pretty
+                    try await storage.chats.upsert(renamed)
                 }
             }
         }
+    }
+
+    private func jidsCanonical(_ jid: String) -> String {
+        let userServer = jid.split(separator: "@").first.map(String.init) ?? jid
+        return String(userServer.split(separator: ":").first ?? Substring(userServer))
+    }
+
+    private func prettyPhone(from jid: String) -> String {
+        let local = jidsCanonical(jid)
+        guard local.allSatisfy({ $0.isNumber }), local.count >= 7 else { return jid }
+        var digits = Array(local)
+        // Reverse-split into groups of 2 from the right, keep the country
+        // code as the leading block.
+        var chunks: [String] = []
+        while digits.count > 2 {
+            let pair = String(digits.suffix(2))
+            chunks.insert(pair, at: 0)
+            digits.removeLast(2)
+        }
+        if !digits.isEmpty { chunks.insert(String(digits), at: 0) }
+        return "+" + chunks.joined(separator: " ")
     }
 
     private func chatTitleLooksNumeric(_ title: String, jid: String) -> Bool {
