@@ -3,26 +3,36 @@ import SwiftUI
 enum WATheme {
 
     enum Colors {
-        // Primary accent — WhatsApp-inspired teal-green family. Not the literal brand value.
-        static let accent = Color(red: 0.12, green: 0.67, blue: 0.54)
-        static let accentDark = Color(red: 0.05, green: 0.30, blue: 0.25)
-        static let accentSoft = Color(red: 0.86, green: 0.97, blue: 0.78)
+        // Canonical WhatsApp hex values. Documented at brand.whatsapp.com.
+        // #25D366 — primary brand green (used as send button + accent dots).
+        static let accent = Color(red: 0x25 / 255.0, green: 0xD3 / 255.0, blue: 0x66 / 255.0)
+        // #075E54 — classic WhatsApp dark teal (top bar / sidebar accent).
+        static let accentDark = Color(red: 0x07 / 255.0, green: 0x5E / 255.0, blue: 0x54 / 255.0)
+        // #128C7E — mid teal (links, secondary accent).
+        static let accentMid = Color(red: 0x12 / 255.0, green: 0x8C / 255.0, blue: 0x7E / 255.0)
+        // #DCF8C6 — outgoing bubble fill.
+        static let accentSoft = Color(red: 0xDC / 255.0, green: 0xF8 / 255.0, blue: 0xC6 / 255.0)
 
-        // Conversation background — the classic chat parchment look.
-        static let chatBackground = Color(red: 0.92, green: 0.91, blue: 0.85)
+        // #EFEAE2 — modern WhatsApp Desktop chat wallpaper (parchment).
+        static let chatBackground = Color(red: 0xEF / 255.0, green: 0xEA / 255.0, blue: 0xE2 / 255.0)
 
         // Bubble fills.
-        static let outgoingBubble = Color(red: 0.86, green: 0.97, blue: 0.78)
+        static let outgoingBubble = Color(red: 0xD9 / 255.0, green: 0xFD / 255.0, blue: 0xD6 / 255.0)
         static let incomingBubble = Color.white
 
-        // Sidebar / surface chrome.
-        static let sidebar = Color(red: 0.04, green: 0.21, blue: 0.18)
-        static let listSurface = Color(red: 0.95, green: 0.95, blue: 0.94)
-        static let detailHeader = Color(red: 0.94, green: 0.94, blue: 0.93)
+        // Sidebar / surface chrome (multi-account strip stays dark teal so
+        // multiple accounts read at a glance — single-account WhatsApp uses
+        // a light sidebar; we keep the dark variant for differentiation).
+        static let sidebar = Color(red: 0x07 / 255.0, green: 0x5E / 255.0, blue: 0x54 / 255.0)
+        // #F0F2F5 — neutral list / header surface used across WhatsApp Desktop.
+        static let listSurface = Color(red: 0xF0 / 255.0, green: 0xF2 / 255.0, blue: 0xF5 / 255.0)
+        static let detailHeader = Color(red: 0xF0 / 255.0, green: 0xF2 / 255.0, blue: 0xF5 / 255.0)
 
         // Status colors.
-        static let readReceipt = Color(red: 0.30, green: 0.65, blue: 0.95)
-        static let onlineBadge = Color(red: 0.20, green: 0.78, blue: 0.42)
+        // #34B7F1 — blue double-check read receipts.
+        static let readReceipt = Color(red: 0x34 / 255.0, green: 0xB7 / 255.0, blue: 0xF1 / 255.0)
+        // #25D366 — online indicator.
+        static let onlineBadge = Color(red: 0x25 / 255.0, green: 0xD3 / 255.0, blue: 0x66 / 255.0)
     }
 
     enum Metrics {
