@@ -89,7 +89,11 @@ final class AccountOnboardingViewModel: ObservableObject {
             do {
                 let cleanedPush = pushName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 let existing = try await storage.accounts.allAccounts().first(where: { $0.id == id })
-                let phonePrefix = String(jid.split(separator: "@").first ?? "")
+                // Strip optional `:device` suffix that comes back from
+                // whatsmeow on multi-device pair — we want the bare phone,
+                // not "905…:48".
+                let rawUserServer = String(jid.split(separator: "@").first ?? "")
+                let phonePrefix = String(rawUserServer.split(separator: ":").first ?? Substring(rawUserServer))
                 let displayName: String
                 if !cleanedPush.isEmpty {
                     displayName = cleanedPush

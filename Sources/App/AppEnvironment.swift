@@ -197,10 +197,14 @@ final class AppEnvironment: ObservableObject {
         let all = try await storage.accounts.allAccounts()
         for account in all {
             let trimmed = account.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard trimmed.isEmpty else { continue }
-            let phonePrefix = account.jid.flatMap { String($0.split(separator: "@").first ?? "") } ?? ""
+            let isPlaceholder = trimmed.isEmpty || trimmed.contains(":")
+            guard isPlaceholder else { continue }
+            let phonePrefix = account.jid.flatMap { jid -> String in
+                let userServer = String(jid.split(separator: "@").first ?? "")
+                return String(userServer.split(separator: ":").first ?? Substring(userServer))
+            } ?? ""
             let healed: String
-            if let push = account.pushName, !push.isEmpty {
+            if let push = account.pushName, !push.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 healed = push
             } else if !phonePrefix.isEmpty {
                 healed = "+\(phonePrefix)"
@@ -210,7 +214,7 @@ final class AppEnvironment: ObservableObject {
             var fixed = account
             fixed.displayName = healed
             try await storage.accounts.upsert(fixed)
-            log.info("Healed empty display name for account \(account.id, privacy: .public)")
+            log.info("Healed display name for account \(account.id, privacy: .public)")
         }
     }
 

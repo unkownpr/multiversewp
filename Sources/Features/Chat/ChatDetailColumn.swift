@@ -8,10 +8,8 @@ struct ChatDetailColumn: View {
     var body: some View {
         ZStack {
             WallpaperBackground()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             content
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityIdentifier("ChatDetailColumn")
     }
 

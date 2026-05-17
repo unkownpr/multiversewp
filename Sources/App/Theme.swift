@@ -149,6 +149,5 @@ struct WallpaperBackground: View {
                     .foregroundStyle(.white.opacity(0.03))
                     .padding(120)
             )
-            .ignoresSafeArea()
     }
 }
