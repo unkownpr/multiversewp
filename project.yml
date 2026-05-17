@@ -28,6 +28,9 @@ packages:
   SwiftProtobuf:
     url: https://github.com/apple/swift-protobuf
     from: "1.28.0"
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.6.0"
 
 targets:
   MultiverseWP:
@@ -43,17 +46,34 @@ targets:
         product: GRDB
       - package: SwiftProtobuf
         product: SwiftProtobuf
+      - package: Sparkle
+        product: Sparkle
+    info:
+      path: Resources/Info.plist
+      properties:
+        CFBundleDisplayName: MultiverseWP
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSApplicationCategoryType: public.app-category.social-networking
+        NSHumanReadableCopyright: "© 2026 Semih Silistre · ssilistre.dev"
+        NSPrincipalClass: NSApplication
+        # Sparkle 2.x auto-update keys
+        # Feed lives on the gh-pages branch of the multiversewp repo.
+        SUFeedURL: https://semihsilistre.github.io/multiversewp/appcast.xml
+        # Required when the host app is sandboxed; harmless when not. See
+        # docs/auto-update.md for the sandbox / Sparkle interaction notes.
+        SUEnableInstallerLauncherService: true
+        # Public half of the EdDSA key pair. Generated once via
+        # `bin/generate_keys` (see docs/sparkle-keys.md). The private half MUST
+        # live in the Keychain only — never in this repo.
+        SUPublicEDKey: REPLACE_ME_WITH_PUBLIC_KEY
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.semihsilistre.multiversewp
         PRODUCT_NAME: MultiverseWP
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_NSPrincipalClass: NSApplication
-        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.social-networking
-        INFOPLIST_KEY_CFBundleDisplayName: MultiverseWP
-        INFOPLIST_KEY_NSHumanReadableCopyright: "© 2026 Semih Silistre"
+        GENERATE_INFOPLIST_FILE: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         CODE_SIGN_ENTITLEMENTS: Resources/MultiverseWP.entitlements
