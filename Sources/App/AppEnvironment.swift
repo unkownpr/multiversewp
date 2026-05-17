@@ -180,6 +180,23 @@ final class AppEnvironment: ObservableObject {
         selectedChatID = nil
     }
 
+    func markAllChatsRead(for accountID: Account.ID) async {
+        do {
+            let chats = try await storage.chats.chats(forAccount: accountID)
+            for chat in chats where chat.unreadCount > 0 {
+                try await storage.chats.resetUnread(for: chat.id)
+                if let refreshed = try await storage.chats.chat(id: chat.id) {
+                    eventBus.publish(.chatUpdated(refreshed))
+                    if let client = clients[accountID] {
+                        try? await client.markChatRead(chatJID: refreshed.jid)
+                    }
+                }
+            }
+        } catch {
+            log.error("markAllChatsRead failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     func selectChat(_ id: Chat.ID?) {
         selectedChatID = id
         guard let id else { return }

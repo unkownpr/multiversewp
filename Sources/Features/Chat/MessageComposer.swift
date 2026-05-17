@@ -12,15 +12,22 @@ struct MessageComposer: View {
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
             Button {
-                // emoji picker not wired yet
+                focused = true
+                // Surface the standard macOS character / emoji palette. It
+                // inserts into whichever text view is currently the first
+                // responder — which is the composer field a beat after the
+                // focus change above.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    NSApp.orderFrontCharacterPalette(nil)
+                }
             } label: {
                 Image(systemName: "face.smiling")
                     .font(.system(size: 18))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .help("Emoji")
-            .disabled(true)
+            .help("Emoji & symbols (⌃⌘Space)")
+            .keyboardShortcut(.space, modifiers: [.command, .control])
 
             Button {
                 attachFile()

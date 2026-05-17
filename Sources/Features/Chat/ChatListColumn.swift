@@ -34,14 +34,38 @@ struct ChatListColumn: View {
                 Text("No account").font(.headline).foregroundStyle(.secondary)
             }
             Spacer()
-            Button {
-                environment.requestAddAccount()
-            } label: {
-                Image(systemName: "square.and.pencil")
-                    .font(.system(size: 16, weight: .medium))
+            if let accountID = environment.selectedAccountID,
+               environment.accounts.first(where: { $0.id == accountID }) != nil {
+                Menu {
+                    Button {
+                        Task { await environment.markAllChatsRead(for: accountID) }
+                    } label: {
+                        Label("Mark all as read", systemImage: "checkmark.circle")
+                    }
+                    Divider()
+                    Button {
+                        environment.requestAddAccount()
+                    } label: {
+                        Label("Link new WhatsApp", systemImage: "plus.circle")
+                    }
+                } label: {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 16, weight: .medium))
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("Account actions")
+            } else {
+                Button {
+                    environment.requestAddAccount()
+                } label: {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 16, weight: .medium))
+                }
+                .buttonStyle(.plain)
+                .help("Link new WhatsApp")
             }
-            .buttonStyle(.plain)
-            .help("New Chat / Account")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
