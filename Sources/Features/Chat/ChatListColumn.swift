@@ -88,34 +88,40 @@ struct ChatListColumn: View {
 
     @ViewBuilder
     private func list(accountID: Account.ID) -> some View {
-        if viewModel.chats.isEmpty {
-            ContentUnavailableView(
-                "No chats yet",
-                systemImage: "bubble.left.and.bubble.right",
-                description: Text("Conversations will land here once the account is connected.")
-            )
-        } else {
-            List(selection: Binding(
-                get: { environment.selectedChatID },
-                set: { environment.selectChat($0) }
-            )) {
-                ForEach(viewModel.filteredChats(query: query)) { chat in
-                    ChatRow(chat: chat)
-                        .tag(chat.id)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-                }
-            }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .background(WATheme.Colors.listSurface)
-            .task(id: accountID) {
-                await viewModel.load(
-                    accountID: accountID,
-                    storage: environment.storage,
-                    eventBus: environment.eventBus
+        Group {
+            if viewModel.chats.isEmpty {
+                ContentUnavailableView(
+                    "No chats yet",
+                    systemImage: "bubble.left.and.bubble.right",
+                    description: Text("Conversations will land here once the account is connected.")
                 )
+            } else {
+                List(selection: Binding(
+                    get: { environment.selectedChatID },
+                    set: { environment.selectChat($0) }
+                )) {
+                    ForEach(viewModel.filteredChats(query: query)) { chat in
+                        ChatRow(chat: chat)
+                            .tag(chat.id)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                    }
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .background(WATheme.Colors.listSurface)
             }
+        }
+        // `.task` must live on a view that mounts whether `chats` is empty
+        // or not — if it sits inside the `else` branch, the empty-state
+        // view hides the loader, so chats never get fetched and the list
+        // stays empty forever (chicken-and-egg).
+        .task(id: accountID) {
+            await viewModel.load(
+                accountID: accountID,
+                storage: environment.storage,
+                eventBus: environment.eventBus
+            )
         }
     }
 
