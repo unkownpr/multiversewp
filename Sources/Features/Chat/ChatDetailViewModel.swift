@@ -106,14 +106,8 @@ final class ChatDetailViewModel: ObservableObject {
 
     private func loadChat(id: Chat.ID, storage: AppStorage) async -> Chat? {
         if let cached = chat, cached.id == id { return cached }
-        let allAccounts = (try? await storage.accounts.allAccounts()) ?? []
-        for account in allAccounts {
-            let chats = (try? await storage.chats.chats(forAccount: account.id)) ?? []
-            if let found = chats.first(where: { $0.id == id }) {
-                chat = found
-                return found
-            }
-        }
-        return nil
+        let found = try? await storage.chats.chat(id: id)
+        chat = found
+        return found
     }
 }

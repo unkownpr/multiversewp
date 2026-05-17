@@ -11,6 +11,7 @@ public protocol AccountsRepository: Sendable {
 
 public protocol ChatsRepository: Sendable {
     func chats(forAccount accountID: Account.ID) async throws -> [Chat]
+    func chat(id: Chat.ID) async throws -> Chat?
     func upsert(_ chat: Chat) async throws
     func incrementUnread(for chatID: Chat.ID, by amount: Int) async throws
     func resetUnread(for chatID: Chat.ID) async throws
@@ -71,9 +72,12 @@ public final class AppStorage: @unchecked Sendable {
     }
 
     public static func makeInMemory() -> AppStorage {
-        // swiftlint:disable:next force_try
-        let pool = try! DatabasePool.makeShared()
-        return AppStorage(dbPool: pool)
+        do {
+            let pool = try DatabasePool.makeShared()
+            return AppStorage(dbPool: pool)
+        } catch {
+            fatalError("Failed to bootstrap in-memory storage: \(error). This indicates a misconfigured test runner.")
+        }
     }
 
     public func migrateIfNeeded() throws {

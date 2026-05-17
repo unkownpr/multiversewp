@@ -234,6 +234,12 @@ struct ChatsRepositoryGRDB: ChatsRepository {
         }
     }
 
+    func chat(id: Chat.ID) async throws -> Chat? {
+        try await dbPool.read { db in
+            try Row.fetchOne(db, sql: "SELECT * FROM chat WHERE id = ?", arguments: [id]).map(Chat.init(row:))
+        }
+    }
+
     func upsert(_ chat: Chat) async throws {
         try await dbPool.write { db in
             try db.execute(
