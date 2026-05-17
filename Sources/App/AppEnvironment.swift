@@ -16,6 +16,7 @@ final class AppEnvironment: ObservableObject {
     let log = Logger(subsystem: AppEnvironment.bundleIdentifier, category: "AppEnvironment")
 
     @Published var pendingOnboarding: OnboardingRequest?
+    @Published var settingsOpen: Bool = false
     @Published private(set) var accounts: [Account] = []
     @Published private(set) var selectedAccountID: Account.ID?
     @Published private(set) var selectedChatID: Chat.ID?
@@ -65,6 +66,7 @@ final class AppEnvironment: ObservableObject {
         bootstrapped = true
         do {
             try storage.migrateIfNeeded()
+            try await healEmptyAccountNames()
             accounts = try await storage.accounts.allAccounts()
             if accounts.isEmpty {
                 pendingOnboarding = OnboardingRequest()
@@ -87,6 +89,59 @@ final class AppEnvironment: ObservableObject {
 
     func requestAddAccount() {
         pendingOnboarding = OnboardingRequest()
+    }
+
+    func openSettings() {
+        settingsOpen = true
+    }
+
+    func renameAccount(_ id: Account.ID, to name: String) async {
+        do {
+            if var account = try await storage.accounts.allAccounts().first(where: { $0.id == id }) {
+                account.displayName = name
+                try await storage.accounts.upsert(account)
+                await reloadAccounts()
+            }
+        } catch {
+            log.error("rename failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    func removeAccount(_ id: Account.ID) async {
+        ingestion.unsubscribe(accountID: id)
+        if let client = clients.removeValue(forKey: id) {
+            await client.disconnect()
+        }
+        do {
+            try await storage.accounts.delete(id: id)
+            await reloadAccounts()
+        } catch {
+            log.error("remove failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Backfill any account whose displayName slipped through with an empty
+    /// or placeholder value (early builds had a fallback bug). Try the JID
+    /// phone prefix first, then push name, then a generic label.
+    private func healEmptyAccountNames() async throws {
+        let all = try await storage.accounts.allAccounts()
+        for account in all {
+            let trimmed = account.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed.isEmpty else { continue }
+            let phonePrefix = account.jid.flatMap { String($0.split(separator: "@").first ?? "") } ?? ""
+            let healed: String
+            if let push = account.pushName, !push.isEmpty {
+                healed = push
+            } else if !phonePrefix.isEmpty {
+                healed = "+\(phonePrefix)"
+            } else {
+                healed = "My WhatsApp"
+            }
+            var fixed = account
+            fixed.displayName = healed
+            try await storage.accounts.upsert(fixed)
+            log.info("Healed empty display name for account \(account.id, privacy: .public)")
+        }
     }
 
     func selectAccount(_ id: Account.ID?) {

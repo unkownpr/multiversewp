@@ -28,5 +28,9 @@ struct RootView: View {
             AccountOnboardingView(request: request)
                 .frame(minWidth: 520, minHeight: 580)
         }
+        .sheet(isPresented: $environment.settingsOpen) {
+            SettingsSheet()
+                .environmentObject(environment)
+        }
     }
 }

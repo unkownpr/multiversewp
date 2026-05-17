@@ -54,17 +54,16 @@ struct AccountSidebar: View {
             Spacer(minLength: 0)
 
             Button {
-                NSWorkspace.shared.open(
-                    URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support/MultiverseWP")
-                )
+                environment.openSettings()
             } label: {
                 Image(systemName: "gearshape.fill")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.6))
+                    .foregroundStyle(.white.opacity(0.7))
             }
             .buttonStyle(.plain)
-            .help("Open MultiverseWP data folder (full settings pane in Phase 2)")
+            .help("Settings — Accounts, AI/MCP, About")
             .accessibilityLabel("Settings")
+            .keyboardShortcut(",", modifiers: .command)
             .padding(.bottom, 16)
         }
         .frame(width: WATheme.Metrics.accountStripWidth)
