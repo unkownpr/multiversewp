@@ -20,7 +20,9 @@ final class MultiverseWPUITests: XCTestCase {
         app.launchEnvironment["MULTIVERSEWP_UI_TEST"] = "1"
         app.launch()
 
-        let onboarding = app.otherElements["AccountOnboardingView"]
-        XCTAssertTrue(onboarding.waitForExistence(timeout: 5))
+        // SwiftUI sheets surface as a new window with their content.
+        // Look for the onboarding header text — it's stable, localized to English.
+        let header = app.staticTexts["Link a WhatsApp Account"]
+        XCTAssertTrue(header.waitForExistence(timeout: 10), "Onboarding sheet should appear on first launch")
     }
 }
