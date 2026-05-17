@@ -23,10 +23,12 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"mime"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -47,6 +49,112 @@ import (
 // the Swift side only needs enough context to render the chat list and recent
 // scrollback, and the user can request older history on demand.
 const historyBacklogCap = 50
+
+// Default per-kind auto-download caps. The Swift UI shows a "Tap to download"
+// placeholder for any media that exceeds these — bytes are still decrypted on
+// demand via the `download_media` command. Override uniformly with the env
+// var MULTIVERSEWP_MEDIA_CAP_MB (an integer expressed in megabytes).
+const (
+	defaultMediaCapImageMB    = 8
+	defaultMediaCapVideoMB    = 20
+	defaultMediaCapAudioMB    = 10
+	defaultMediaCapDocumentMB = 50
+	defaultMediaCapStickerMB  = 4
+)
+
+// mediaCap returns the soft cap (in bytes) used to decide whether the helper
+// should auto-download a freshly received media message. A 0 size means we
+// have no hint (history replay sometimes omits FileLength) — in that case we
+// pessimistically assume "within cap" so the user still gets the file inline.
+func mediaCap(kind string) int64 {
+	override := strings.TrimSpace(os.Getenv("MULTIVERSEWP_MEDIA_CAP_MB"))
+	if override != "" {
+		if n, err := strconv.ParseInt(override, 10, 64); err == nil && n > 0 {
+			return n * 1024 * 1024
+		}
+	}
+	switch kind {
+	case "image":
+		return int64(defaultMediaCapImageMB) * 1024 * 1024
+	case "video":
+		return int64(defaultMediaCapVideoMB) * 1024 * 1024
+	case "audio":
+		return int64(defaultMediaCapAudioMB) * 1024 * 1024
+	case "document":
+		return int64(defaultMediaCapDocumentMB) * 1024 * 1024
+	case "sticker":
+		return int64(defaultMediaCapStickerMB) * 1024 * 1024
+	default:
+		return 0
+	}
+}
+
+// extensionForMimeType maps a wire MIME string to a friendly file extension.
+// Falls back to Go's `mime` package and finally "bin" so the on-disk file
+// always has *some* suffix Quick Look can dispatch on.
+func extensionForMimeType(mimeType string) string {
+	switch strings.ToLower(strings.TrimSpace(strings.Split(mimeType, ";")[0])) {
+	case "image/jpeg", "image/jpg":
+		return "jpg"
+	case "image/png":
+		return "png"
+	case "image/gif":
+		return "gif"
+	case "image/webp":
+		return "webp"
+	case "image/heic":
+		return "heic"
+	case "video/mp4":
+		return "mp4"
+	case "video/quicktime":
+		return "mov"
+	case "video/3gpp":
+		return "3gp"
+	case "audio/ogg", "audio/ogg; codecs=opus":
+		return "ogg"
+	case "audio/mpeg":
+		return "mp3"
+	case "audio/mp4", "audio/aac":
+		return "m4a"
+	case "audio/wav", "audio/x-wav":
+		return "wav"
+	case "application/pdf":
+		return "pdf"
+	case "application/zip":
+		return "zip"
+	case "application/msword":
+		return "doc"
+	case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+		return "docx"
+	case "application/vnd.ms-excel":
+		return "xls"
+	case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+		return "xlsx"
+	}
+	exts, err := mime.ExtensionsByType(mimeType)
+	if err == nil && len(exts) > 0 {
+		// mime.ExtensionsByType includes the leading dot.
+		return strings.TrimPrefix(exts[0], ".")
+	}
+	return "bin"
+}
+
+// mediaUploadKind maps our wire `kind` string to the whatsmeow MediaType
+// constant required by `client.Upload`. Returns false for kinds we cannot
+// upload directly (e.g. unsupported / sticker without explicit MediaType).
+func mediaUploadKind(kind string) (whatsmeow.MediaType, bool) {
+	switch kind {
+	case "image":
+		return whatsmeow.MediaImage, true
+	case "video":
+		return whatsmeow.MediaVideo, true
+	case "audio":
+		return whatsmeow.MediaAudio, true
+	case "document":
+		return whatsmeow.MediaDocument, true
+	}
+	return "", false
+}
 
 // stderrLogger is a tiny waLog.Logger that writes to STDERR so it never
 // corrupts the wire protocol we own on STDOUT.
@@ -124,8 +232,22 @@ type helper struct {
 	qrCancelMu sync.Mutex
 	qrCancel   context.CancelFunc
 
+	// protoCache keeps a clone of every media-bearing inbound *waE2E.Message
+	// keyed by message ID so on-demand `download_media` requests can re-run
+	// the decryption without re-fetching the envelope. We only retain the
+	// most recent N entries; cold-cache misses fall back to returning the
+	// existing on-disk file path if one is present.
+	protoCacheMu sync.Mutex
+	protoCache   map[string]*waE2E.Message
+	protoOrder   []string
+
 	shutdownOnce sync.Once
 }
+
+// protoCacheCap bounds the in-memory cache size so a long-running helper
+// process does not retain the entire chat history. 256 messages covers the
+// active scroll-back of a typical session.
+const protoCacheCap = 256
 
 func main() {
 	accountID := flag.String("account-id", "", "UUID of the account this helper instance manages")
@@ -148,6 +270,7 @@ func main() {
 		out:        json.NewEncoder(os.Stdout),
 		rootCtx:    ctx,
 		stop:       cancel,
+		protoCache: make(map[string]*waE2E.Message),
 	}
 
 	sigCh := make(chan os.Signal, 1)
@@ -377,6 +500,148 @@ func extractMessageContent(msg *waE2E.Message) (kind, body, mimeType, mediaURL s
 	return "unsupported", "", "", "", 0, ""
 }
 
+// cacheProto stores a clone of the inbound *waE2E.Message keyed by ID. The
+// cache is bounded; the oldest entry is evicted when the cap is reached so the
+// helper does not retain unlimited history.
+func (h *helper) cacheProto(id string, msg *waE2E.Message) {
+	if id == "" || msg == nil {
+		return
+	}
+	h.protoCacheMu.Lock()
+	defer h.protoCacheMu.Unlock()
+	if _, exists := h.protoCache[id]; exists {
+		return
+	}
+	if len(h.protoOrder) >= protoCacheCap {
+		oldest := h.protoOrder[0]
+		h.protoOrder = h.protoOrder[1:]
+		delete(h.protoCache, oldest)
+	}
+	h.protoCache[id] = msg
+	h.protoOrder = append(h.protoOrder, id)
+}
+
+func (h *helper) cachedProto(id string) *waE2E.Message {
+	h.protoCacheMu.Lock()
+	defer h.protoCacheMu.Unlock()
+	return h.protoCache[id]
+}
+
+// mediaDir returns the per-session directory media bytes are written to.
+// Created on demand with 0o700 — the helper writes here exclusively.
+func (h *helper) mediaDir() (string, error) {
+	dir := filepath.Join(h.sessionDir, "media")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+// downloadable produces the strongest concrete media accessor the proto can
+// offer. The returned interface is the same one `client.Download` consumes; a
+// nil result means the message has no downloadable media payload.
+func downloadable(msg *waE2E.Message) whatsmeow.DownloadableMessage {
+	if msg == nil {
+		return nil
+	}
+	if img := msg.GetImageMessage(); img != nil {
+		return img
+	}
+	if vid := msg.GetVideoMessage(); vid != nil {
+		return vid
+	}
+	if aud := msg.GetAudioMessage(); aud != nil {
+		return aud
+	}
+	if doc := msg.GetDocumentMessage(); doc != nil {
+		return doc
+	}
+	if sticker := msg.GetStickerMessage(); sticker != nil {
+		return sticker
+	}
+	return nil
+}
+
+// downloadAndPersist decrypts the media body referenced by `msg`, writes it to
+// `<sessionDir>/media/<id>.<ext>` and returns the absolute path. Errors are
+// returned to the caller — the live event path treats them as non-fatal so the
+// metadata envelope still ships even when media cannot be materialised.
+func (h *helper) downloadAndPersist(ctx context.Context, id, kind, mimeType string, msg *waE2E.Message) (string, error) {
+	if id == "" || msg == nil {
+		return "", fmt.Errorf("missing id or message")
+	}
+	dl := downloadable(msg)
+	if dl == nil {
+		return "", fmt.Errorf("message has no downloadable payload")
+	}
+	h.clientMu.Lock()
+	client := h.client
+	h.clientMu.Unlock()
+	if client == nil {
+		return "", fmt.Errorf("client not initialised")
+	}
+	data, err := client.Download(ctx, dl)
+	if err != nil {
+		return "", fmt.Errorf("download: %w", err)
+	}
+	dir, err := h.mediaDir()
+	if err != nil {
+		return "", fmt.Errorf("mediaDir: %w", err)
+	}
+	ext := extensionForMimeType(mimeType)
+	// Sanitise the message ID just in case — IDs are typically opaque
+	// strings but we want a safe filename component.
+	safe := strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+			return r
+		}
+		return '_'
+	}, id)
+	path := filepath.Join(dir, fmt.Sprintf("%s.%s", safe, ext))
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return "", fmt.Errorf("write: %w", err)
+	}
+	_ = kind // currently unused; reserved for kind-specific post-processing.
+	return path, nil
+}
+
+// shouldAutoDownload returns true when the helper should pull bytes inline as
+// part of the regular message-event emit. Caller supplies the proto kind and
+// the proto-declared byte size; a zero size means we have no hint and should
+// optimistically proceed.
+func shouldAutoDownload(kind string, byteSize int64) bool {
+	cap := mediaCap(kind)
+	if cap == 0 {
+		return false
+	}
+	if byteSize <= 0 {
+		return true
+	}
+	return byteSize <= cap
+}
+
+// maybeAutoDownload is the helper used by both the live and the HistorySync
+// paths. It caches the proto for later on-demand downloads, then (when within
+// the size cap) decrypts the body and returns the on-disk path. Failures are
+// logged to stderr and an empty path is returned — callers should still emit
+// the metadata envelope.
+func (h *helper) maybeAutoDownload(id, kind, mimeType string, byteSize int64, msg *waE2E.Message) string {
+	if id == "" || msg == nil || downloadable(msg) == nil {
+		return ""
+	}
+	h.cacheProto(id, msg)
+	if !shouldAutoDownload(kind, byteSize) {
+		return ""
+	}
+	path, err := h.downloadAndPersist(h.rootCtx, id, kind, mimeType, msg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[Media] auto-download failed id=%s kind=%s: %v\n", id, kind, err)
+		return ""
+	}
+	return path
+}
+
 func (h *helper) emitMessage(v *events.Message) {
 	info := v.Info
 	msg := v.Message
@@ -410,6 +675,9 @@ func (h *helper) emitMessage(v *events.Message) {
 	}
 	if quotedID != "" {
 		payload["quoted_message_id"] = quotedID
+	}
+	if mediaPath := h.maybeAutoDownload(info.ID, kind, mimeType, byteSize, msg); mediaPath != "" {
+		payload["media_path"] = mediaPath
 	}
 
 	h.emit(event{Type: "message", Payload: payload})
@@ -538,6 +806,9 @@ func (h *helper) emitHistoryConversation(conv *waHistorySync.Conversation) {
 		if quotedID != "" {
 			payload["quoted_message_id"] = quotedID
 		}
+		if mediaPath := h.maybeAutoDownload(id, kind, mimeType, byteSize, inner); mediaPath != "" {
+			payload["media_path"] = mediaPath
+		}
 
 		h.emit(event{Type: "message", Payload: payload})
 	}
@@ -567,6 +838,9 @@ func (h *helper) handleSendMessage(cmd command) {
 	var payload struct {
 		ChatJID         string `json:"chat_jid"`
 		Text            string `json:"text"`
+		MediaPath       string `json:"media_path"`
+		MimeType        string `json:"mime_type"`
+		Caption         string `json:"caption"`
 		QuotedMessageID string `json:"quoted_message_id"`
 	}
 	if err := json.Unmarshal(cmd.Payload, &payload); err != nil {
@@ -592,8 +866,20 @@ func (h *helper) handleSendMessage(cmd command) {
 		return
 	}
 
-	msg := &waE2E.Message{
-		Conversation: proto.String(payload.Text),
+	var msg *waE2E.Message
+	var sentKind string
+	var sentLocalPath string
+	if payload.MediaPath != "" {
+		built, kind, err := h.buildOutgoingMediaMessage(h.rootCtx, payload.MediaPath, payload.MimeType, payload.Caption)
+		if err != nil {
+			h.replyError(cmd.ID, fmt.Sprintf("attach: %v", err))
+			return
+		}
+		msg = built
+		sentKind = kind
+		sentLocalPath = payload.MediaPath
+	} else {
+		msg = &waE2E.Message{Conversation: proto.String(payload.Text)}
 	}
 
 	resp, err := client.SendMessage(h.rootCtx, jid, msg)
@@ -601,21 +887,209 @@ func (h *helper) handleSendMessage(cmd command) {
 		h.replyError(cmd.ID, fmt.Sprintf("send: %v", err))
 		return
 	}
-	h.replyOK(cmd.ID, map[string]interface{}{"message_id": resp.ID})
-	h.emit(event{Type: "delivery", Payload: map[string]interface{}{
+
+	replyPayload := map[string]interface{}{"message_id": resp.ID}
+	if sentLocalPath != "" {
+		replyPayload["local_path"] = sentLocalPath
+		replyPayload["kind"] = sentKind
+	}
+	h.replyOK(cmd.ID, replyPayload)
+
+	deliveryPayload := map[string]interface{}{
 		"message_id": resp.ID,
 		"status":     "sent",
-	}})
+	}
+	if sentLocalPath != "" {
+		// Surface the local copy so the Swift side can render the outgoing
+		// thumbnail without waiting for the server to round-trip the media
+		// proto back to us.
+		deliveryPayload["media_path"] = sentLocalPath
+	}
+	h.emit(event{Type: "delivery", Payload: deliveryPayload})
 }
 
+// buildOutgoingMediaMessage uploads the bytes at `path` to WhatsApp's media
+// store and returns the corresponding *waE2E.Message (Image/Video/Audio/
+// Document) plus the wire-protocol `kind` describing it.
+func (h *helper) buildOutgoingMediaMessage(ctx context.Context, path, mimeType, caption string) (*waE2E.Message, string, error) {
+	if path == "" {
+		return nil, "", fmt.Errorf("empty media_path")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, "", fmt.Errorf("read: %w", err)
+	}
+	if mimeType == "" {
+		// Best-effort sniff via the file extension; the user-facing layer
+		// usually already supplies an explicit MIME but historic clients may
+		// omit it.
+		mimeType = mime.TypeByExtension(strings.ToLower(filepath.Ext(path)))
+		if mimeType == "" {
+			mimeType = "application/octet-stream"
+		}
+	}
+	kind := mimeKind(mimeType)
+	mediaType, ok := mediaUploadKind(kind)
+	if !ok {
+		return nil, "", fmt.Errorf("unsupported media kind: %s", kind)
+	}
+	h.clientMu.Lock()
+	client := h.client
+	h.clientMu.Unlock()
+	if client == nil {
+		return nil, "", fmt.Errorf("client not initialised")
+	}
+	uploaded, err := client.Upload(ctx, data, mediaType)
+	if err != nil {
+		return nil, "", fmt.Errorf("upload: %w", err)
+	}
+
+	switch kind {
+	case "image":
+		msg := &waE2E.Message{
+			ImageMessage: &waE2E.ImageMessage{
+				Caption:       proto.String(caption),
+				Mimetype:      proto.String(mimeType),
+				URL:           &uploaded.URL,
+				DirectPath:    &uploaded.DirectPath,
+				MediaKey:      uploaded.MediaKey,
+				FileEncSHA256: uploaded.FileEncSHA256,
+				FileSHA256:    uploaded.FileSHA256,
+				FileLength:    &uploaded.FileLength,
+			},
+		}
+		return msg, kind, nil
+	case "video":
+		msg := &waE2E.Message{
+			VideoMessage: &waE2E.VideoMessage{
+				Caption:       proto.String(caption),
+				Mimetype:      proto.String(mimeType),
+				URL:           &uploaded.URL,
+				DirectPath:    &uploaded.DirectPath,
+				MediaKey:      uploaded.MediaKey,
+				FileEncSHA256: uploaded.FileEncSHA256,
+				FileSHA256:    uploaded.FileSHA256,
+				FileLength:    &uploaded.FileLength,
+			},
+		}
+		return msg, kind, nil
+	case "audio":
+		msg := &waE2E.Message{
+			AudioMessage: &waE2E.AudioMessage{
+				Mimetype:      proto.String(mimeType),
+				URL:           &uploaded.URL,
+				DirectPath:    &uploaded.DirectPath,
+				MediaKey:      uploaded.MediaKey,
+				FileEncSHA256: uploaded.FileEncSHA256,
+				FileSHA256:    uploaded.FileSHA256,
+				FileLength:    &uploaded.FileLength,
+			},
+		}
+		return msg, kind, nil
+	case "document":
+		filename := filepath.Base(path)
+		msg := &waE2E.Message{
+			DocumentMessage: &waE2E.DocumentMessage{
+				Title:         proto.String(filename),
+				FileName:      proto.String(filename),
+				Mimetype:      proto.String(mimeType),
+				URL:           &uploaded.URL,
+				DirectPath:    &uploaded.DirectPath,
+				MediaKey:      uploaded.MediaKey,
+				FileEncSHA256: uploaded.FileEncSHA256,
+				FileSHA256:    uploaded.FileSHA256,
+				FileLength:    &uploaded.FileLength,
+				Caption:       proto.String(caption),
+			},
+		}
+		return msg, kind, nil
+	}
+	return nil, "", fmt.Errorf("unsupported media kind: %s", kind)
+}
+
+// mimeKind classifies a MIME type into the wire-protocol kind string. Falls
+// back to "document" for anything that isn't obviously a/v/i so the receiver
+// at least sees the file with a generic icon.
+func mimeKind(mimeType string) string {
+	lower := strings.ToLower(strings.TrimSpace(strings.Split(mimeType, ";")[0]))
+	switch {
+	case strings.HasPrefix(lower, "image/"):
+		return "image"
+	case strings.HasPrefix(lower, "video/"):
+		return "video"
+	case strings.HasPrefix(lower, "audio/"):
+		return "audio"
+	default:
+		return "document"
+	}
+}
+
+// handleDownloadMedia decrypts the media bytes for a previously-emitted message
+// and returns the on-disk path. If the proto cache no longer holds the message
+// (e.g. the helper was restarted) we fall back to any existing file under
+// sessionDir/media that matches the ID prefix.
 func (h *helper) handleDownloadMedia(cmd command) {
-	// TODO(media): re-fetch the original *events.Message from the local store
-	// and call client.Download to materialise the bytes under sessionDir/media.
 	var payload struct {
 		MessageID string `json:"message_id"`
 	}
-	_ = json.Unmarshal(cmd.Payload, &payload)
-	h.replyError(cmd.ID, "download_media not yet implemented")
+	if err := json.Unmarshal(cmd.Payload, &payload); err != nil {
+		h.replyError(cmd.ID, fmt.Sprintf("invalid payload: %v", err))
+		return
+	}
+	if payload.MessageID == "" {
+		h.replyError(cmd.ID, "message_id is required")
+		return
+	}
+
+	// If we already have a copy on disk, return it without re-downloading.
+	if existing := h.findExistingMediaFile(payload.MessageID); existing != "" {
+		h.replyOK(cmd.ID, map[string]interface{}{"local_path": existing})
+		h.emit(event{Type: "delivery", Payload: map[string]interface{}{
+			"message_id": payload.MessageID,
+			"status":     "downloaded",
+			"media_path": existing,
+		}})
+		return
+	}
+
+	msg := h.cachedProto(payload.MessageID)
+	if msg == nil {
+		h.replyError(cmd.ID, "message proto not cached; restart helper after fresh receipt")
+		return
+	}
+	kind, _, mimeType, _, _, _ := extractMessageContent(msg)
+	path, err := h.downloadAndPersist(h.rootCtx, payload.MessageID, kind, mimeType, msg)
+	if err != nil {
+		h.replyError(cmd.ID, fmt.Sprintf("download: %v", err))
+		return
+	}
+	h.replyOK(cmd.ID, map[string]interface{}{"local_path": path})
+	h.emit(event{Type: "delivery", Payload: map[string]interface{}{
+		"message_id": payload.MessageID,
+		"status":     "downloaded",
+		"media_path": path,
+	}})
+}
+
+// findExistingMediaFile looks under sessionDir/media for any file whose stem
+// matches the requested message ID. Returns the first match or "" if absent.
+func (h *helper) findExistingMediaFile(id string) string {
+	dir := filepath.Join(h.sessionDir, "media")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		stem := strings.TrimSuffix(name, filepath.Ext(name))
+		if stem == id {
+			return filepath.Join(dir, name)
+		}
+	}
+	return ""
 }
 
 func (h *helper) shutdown(reason string) {

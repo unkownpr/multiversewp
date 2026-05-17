@@ -29,7 +29,11 @@ public enum WAClientEvent: Sendable, Equatable {
     case connected
     case disconnected(reason: String?)
     case messageReceived(IncomingMessage)
-    case deliveryUpdate(messageID: String, status: String)
+    /// `mediaPath` is populated when the delivery transitions an existing
+    /// message into a freshly-materialised media file (auto-download from the
+    /// helper, an on-demand `download_media` reply, or the local copy of an
+    /// outgoing send). It is nil for vanilla read/delivered receipts.
+    case deliveryUpdate(messageID: String, status: String, mediaPath: String?)
     case contactUpdate(IncomingContact)
     case error(String)
 }
@@ -46,6 +50,11 @@ public struct IncomingMessage: Sendable, Equatable {
     public let mimeType: String?
     public let mediaURL: String?
     public let mediaByteSize: Int64?
+    /// Absolute path on the local filesystem where the helper has already
+    /// materialised the decrypted media bytes. Nil when the message either has
+    /// no media payload or the helper skipped auto-download (size cap, failure,
+    /// or the user has not yet tapped "Download").
+    public let mediaPath: String?
     public let quotedMessageID: String?
     public let timestamp: Date
 
@@ -61,6 +70,7 @@ public struct IncomingMessage: Sendable, Equatable {
         mimeType: String?,
         mediaURL: String?,
         mediaByteSize: Int64?,
+        mediaPath: String? = nil,
         quotedMessageID: String?,
         timestamp: Date
     ) {
@@ -75,6 +85,7 @@ public struct IncomingMessage: Sendable, Equatable {
         self.mimeType = mimeType
         self.mediaURL = mediaURL
         self.mediaByteSize = mediaByteSize
+        self.mediaPath = mediaPath
         self.quotedMessageID = quotedMessageID
         self.timestamp = timestamp
     }

@@ -65,8 +65,8 @@ public final class MessageIngestionService {
         switch event {
         case .messageReceived(let incoming):
             await ingest(incoming: incoming, account: account)
-        case .deliveryUpdate(let messageID, let status):
-            await updateDelivery(messageID: messageID, status: status)
+        case .deliveryUpdate(let messageID, let status, let mediaPath):
+            await updateDelivery(messageID: messageID, status: status, mediaPath: mediaPath, account: account)
         case .contactUpdate(let contact):
             await ingest(contact: contact, account: account)
         case .connected:
@@ -106,6 +106,23 @@ public final class MessageIngestionService {
 
             let direction: Message.Direction = incoming.isFromMe ? .outgoing : .incoming
             let kind = Message.Kind(rawValue: incoming.kind) ?? .text
+            let hasMediaPayload = incoming.mediaURL != nil
+                || incoming.mediaPath != nil
+                || incoming.mediaByteSize != nil
+            let mediaID: MediaItem.ID? = hasMediaPayload ? incoming.id : nil
+            if let mediaID {
+                let item = MediaItem(
+                    id: mediaID,
+                    accountID: account.id,
+                    mimeType: incoming.mimeType ?? "application/octet-stream",
+                    byteSize: incoming.mediaByteSize ?? 0,
+                    localPath: incoming.mediaPath,
+                    remoteURL: incoming.mediaURL.flatMap(URL.init(string:)),
+                    caption: incoming.body,
+                    downloadStatus: incoming.mediaPath != nil ? .completed : .pending
+                )
+                try await storage.media.upsert(item)
+            }
             let message = Message(
                 id: incoming.id,
                 chatID: chatID,
@@ -115,7 +132,7 @@ public final class MessageIngestionService {
                 direction: direction,
                 kind: kind,
                 body: incoming.body,
-                mediaID: incoming.mediaURL == nil ? nil : incoming.id,
+                mediaID: mediaID,
                 quotedMessageID: incoming.quotedMessageID,
                 timestamp: incoming.timestamp,
                 deliveryStatus: direction == .incoming ? .delivered : .sent,
@@ -138,11 +155,41 @@ public final class MessageIngestionService {
         }
     }
 
-    private func updateDelivery(messageID: String, status: String) async {
-        let parsed = Message.DeliveryStatus(rawValue: status) ?? .delivered
+    private func updateDelivery(messageID: String, status: String, mediaPath: String?, account: Account) async {
+        // "downloaded" is a synthetic status used to carry an on-demand media
+        // path back from the helper; it never appears in the DeliveryStatus
+        // enum so we treat it as a media-only update rather than a state
+        // transition. Otherwise we map by raw value.
+        let isDownloaded = (status == "downloaded")
+        let parsed = Message.DeliveryStatus(rawValue: status)
         do {
-            try await storage.messages.updateDelivery(messageID: messageID, status: parsed)
-            eventBus.publish(.messageDeliveryUpdated(messageID: messageID, status: parsed))
+            if let mediaPath {
+                // Upsert / heal the media row so the UI can re-render the
+                // bubble even though the rest of the delivery semantics may
+                // be a no-op (e.g. on-demand download for a previously cap-
+                // skipped image).
+                let existing = try? await storage.media.media(id: messageID)
+                let item = MediaItem(
+                    id: messageID,
+                    accountID: account.id,
+                    mimeType: existing?.mimeType ?? "application/octet-stream",
+                    byteSize: existing?.byteSize ?? 0,
+                    localPath: mediaPath,
+                    remoteURL: existing?.remoteURL,
+                    caption: existing?.caption,
+                    downloadStatus: .completed
+                )
+                try await storage.media.upsert(item)
+            }
+            if let parsed, !isDownloaded {
+                try await storage.messages.updateDelivery(messageID: messageID, status: parsed)
+                eventBus.publish(.messageDeliveryUpdated(messageID: messageID, status: parsed))
+            } else if mediaPath != nil {
+                // Media-only nudge — surface a synthetic "delivered" status
+                // update so view models that observe delivery events re-fetch
+                // the row (and thus pick up the new media_path).
+                eventBus.publish(.messageDeliveryUpdated(messageID: messageID, status: .delivered))
+            }
         } catch {
             log.error("delivery update failed: \(error.localizedDescription, privacy: .public)")
         }

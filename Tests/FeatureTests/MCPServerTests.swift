@@ -75,14 +75,17 @@ final class MCPServerTests: XCTestCase {
         XCTAssertNotNil(result["capabilities"])
     }
 
-    func testToolsListReturnsFourReadOnlyTools() async throws {
+    func testToolsListReturnsReadOnlyTools() async throws {
         let response = try await call("""
         {"jsonrpc":"2.0","id":7,"method":"tools/list","params":{}}
         """)
         let result = try XCTUnwrap(response["result"] as? [String: Any])
         let tools = try XCTUnwrap(result["tools"] as? [[String: Any]])
         let names = tools.compactMap { $0["name"] as? String }.sorted()
-        XCTAssertEqual(names, ["get_messages", "list_accounts", "list_chats", "search_messages"])
+        XCTAssertEqual(
+            names,
+            ["download_media_now", "get_messages", "list_accounts", "list_chats", "search_messages"]
+        )
     }
 
     func testUnknownMethodReturnsMethodNotFound() async throws {
@@ -155,6 +158,50 @@ final class MCPServerTests: XCTestCase {
         let decoded = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [[String: Any]]
         XCTAssertEqual(decoded?.count, 1)
         XCTAssertEqual(decoded?.first?["body"] as? String, "Dentist appointment tomorrow")
+    }
+
+    // MARK: - download_media_now
+
+    func testDownloadMediaNowReturnsPathWhenMediaRowHasLocalCopy() async throws {
+        // Seed a media row backed by a temp file the tool can resolve to a
+        // concrete on-disk path.
+        let tempFile = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mvwp-media-\(UUID().uuidString).jpg")
+        try Data("bytes".utf8).write(to: tempFile)
+
+        let alice = try await storage.accounts.allAccounts().first(where: { $0.displayName == "Alice" })
+        let item = MediaItem(
+            id: "m-with-media",
+            accountID: try XCTUnwrap(alice?.id),
+            mimeType: "image/jpeg",
+            byteSize: 5,
+            localPath: tempFile.path,
+            downloadStatus: .completed
+        )
+        try await storage.media.upsert(item)
+
+        let response = try await call("""
+        {"jsonrpc":"2.0","id":50,"method":"tools/call","params":{"name":"download_media_now","arguments":{"message_id":"m-with-media"}}}
+        """)
+        let result = try XCTUnwrap(response["result"] as? [String: Any])
+        let content = try XCTUnwrap(result["content"] as? [[String: Any]])
+        let text = try XCTUnwrap(content.first?["text"] as? String)
+        let decoded = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
+        XCTAssertEqual(decoded?["media_path"] as? String, tempFile.path)
+        XCTAssertEqual(decoded?["download_status"] as? String, "completed")
+    }
+
+    func testDownloadMediaNowReturnsNullPathWhenAbsent() async throws {
+        let response = try await call("""
+        {"jsonrpc":"2.0","id":51,"method":"tools/call","params":{"name":"download_media_now","arguments":{"message_id":"missing"}}}
+        """)
+        let result = try XCTUnwrap(response["result"] as? [String: Any])
+        let content = try XCTUnwrap(result["content"] as? [[String: Any]])
+        let text = try XCTUnwrap(content.first?["text"] as? String)
+        let decoded = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
+        // JSONSerialization decodes `null` as NSNull.
+        XCTAssertTrue(decoded?["media_path"] is NSNull)
+        XCTAssertEqual(decoded?["download_status"] as? String, "unknown")
     }
 
     // MARK: - Helpers

@@ -99,7 +99,11 @@ enum WireDecoder {
                 let id = payload["message_id"] as? String,
                 let status = payload["status"] as? String
             else { throw WAClientError.decodingFailed("delivery missing fields") }
-            return .event(.deliveryUpdate(messageID: id, status: status))
+            return .event(.deliveryUpdate(
+                messageID: id,
+                status: status,
+                mediaPath: payload["media_path"] as? String
+            ))
         case "contact":
             guard let jid = payload["jid"] as? String else {
                 throw WAClientError.decodingFailed("contact missing jid")
@@ -146,6 +150,7 @@ enum WireDecoder {
             mimeType: payload["mime_type"] as? String,
             mediaURL: payload["media_url"] as? String,
             mediaByteSize: payload["media_byte_size"] as? Int64,
+            mediaPath: payload["media_path"] as? String,
             quotedMessageID: payload["quoted_message_id"] as? String,
             timestamp: timestamp
         )
