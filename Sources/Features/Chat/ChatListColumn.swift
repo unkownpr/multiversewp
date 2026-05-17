@@ -8,9 +8,6 @@ struct ChatListColumn: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Match the AccountSidebar traffic-light clearance so the header
-            // pins to the same baseline as the dark sidebar's logo.
-            Color.clear.frame(height: WATheme.Metrics.titleBarClearance)
             header
             searchBar
             Divider().opacity(0.4)
