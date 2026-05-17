@@ -26,18 +26,27 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"syscall"
 
 	_ "github.com/mattn/go-sqlite3"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
 	"google.golang.org/protobuf/proto"
 )
+
+// historyBacklogCap limits how many recent messages we replay per conversation
+// during HistorySync. Cold-pair can deliver thousands of messages per chat;
+// the Swift side only needs enough context to render the chat list and recent
+// scrollback, and the user can request older history on demand.
+const historyBacklogCap = 50
 
 // stderrLogger is a tiny waLog.Logger that writes to STDERR so it never
 // corrupts the wire protocol we own on STDOUT.
@@ -311,7 +320,61 @@ func (h *helper) handleEvent(evt interface{}) {
 			"push_name":    v.NewPushName,
 			"phone_number": v.JID.User,
 		}})
+	case *events.HistorySync:
+		h.emitHistorySync(v)
 	}
+}
+
+// extractMessageContent inspects a whatsmeow *waE2E.Message and returns the
+// frozen wire-protocol kind plus any body/media/quoted-id derived from the
+// strongest match. Used by both the live emitMessage path and the HistorySync
+// backfill path so they cannot drift.
+func extractMessageContent(msg *waE2E.Message) (kind, body, mimeType, mediaURL string, byteSize int64, quotedID string) {
+	if msg == nil {
+		return "unsupported", "", "", "", 0, ""
+	}
+	if text := msg.GetConversation(); text != "" {
+		return "text", text, "", "", 0, ""
+	}
+	if ext := msg.GetExtendedTextMessage(); ext != nil {
+		quoted := ""
+		if ctx := ext.GetContextInfo(); ctx != nil {
+			quoted = ctx.GetStanzaID()
+		}
+		return "text", ext.GetText(), "", "", 0, quoted
+	}
+	if img := msg.GetImageMessage(); img != nil {
+		quoted := ""
+		if ctx := img.GetContextInfo(); ctx != nil {
+			quoted = ctx.GetStanzaID()
+		}
+		return "image", img.GetCaption(), img.GetMimetype(), img.GetURL(), int64(img.GetFileLength()), quoted
+	}
+	if vid := msg.GetVideoMessage(); vid != nil {
+		quoted := ""
+		if ctx := vid.GetContextInfo(); ctx != nil {
+			quoted = ctx.GetStanzaID()
+		}
+		return "video", vid.GetCaption(), vid.GetMimetype(), vid.GetURL(), int64(vid.GetFileLength()), quoted
+	}
+	if aud := msg.GetAudioMessage(); aud != nil {
+		quoted := ""
+		if ctx := aud.GetContextInfo(); ctx != nil {
+			quoted = ctx.GetStanzaID()
+		}
+		return "audio", "", aud.GetMimetype(), aud.GetURL(), int64(aud.GetFileLength()), quoted
+	}
+	if doc := msg.GetDocumentMessage(); doc != nil {
+		quoted := ""
+		if ctx := doc.GetContextInfo(); ctx != nil {
+			quoted = ctx.GetStanzaID()
+		}
+		return "document", doc.GetFileName(), doc.GetMimetype(), doc.GetURL(), int64(doc.GetFileLength()), quoted
+	}
+	if sticker := msg.GetStickerMessage(); sticker != nil {
+		return "sticker", "", sticker.GetMimetype(), sticker.GetURL(), int64(sticker.GetFileLength()), ""
+	}
+	return "unsupported", "", "", "", 0, ""
 }
 
 func (h *helper) emitMessage(v *events.Message) {
@@ -321,75 +384,17 @@ func (h *helper) emitMessage(v *events.Message) {
 		return
 	}
 
-	kind := "text"
-	var body string
-	var mimeType string
-	var mediaURL string
-	var byteSize int64
-	var quotedID string
-
-	if text := msg.GetConversation(); text != "" {
-		kind = "text"
-		body = text
-	} else if ext := msg.GetExtendedTextMessage(); ext != nil {
-		kind = "text"
-		body = ext.GetText()
-		if ctx := ext.GetContextInfo(); ctx != nil {
-			quotedID = ctx.GetStanzaID()
-		}
-	} else if img := msg.GetImageMessage(); img != nil {
-		kind = "image"
-		body = img.GetCaption()
-		mimeType = img.GetMimetype()
-		mediaURL = img.GetURL()
-		byteSize = int64(img.GetFileLength())
-		if ctx := img.GetContextInfo(); ctx != nil {
-			quotedID = ctx.GetStanzaID()
-		}
-	} else if vid := msg.GetVideoMessage(); vid != nil {
-		kind = "video"
-		body = vid.GetCaption()
-		mimeType = vid.GetMimetype()
-		mediaURL = vid.GetURL()
-		byteSize = int64(vid.GetFileLength())
-		if ctx := vid.GetContextInfo(); ctx != nil {
-			quotedID = ctx.GetStanzaID()
-		}
-	} else if aud := msg.GetAudioMessage(); aud != nil {
-		kind = "audio"
-		mimeType = aud.GetMimetype()
-		mediaURL = aud.GetURL()
-		byteSize = int64(aud.GetFileLength())
-		if ctx := aud.GetContextInfo(); ctx != nil {
-			quotedID = ctx.GetStanzaID()
-		}
-	} else if doc := msg.GetDocumentMessage(); doc != nil {
-		kind = "document"
-		body = doc.GetFileName()
-		mimeType = doc.GetMimetype()
-		mediaURL = doc.GetURL()
-		byteSize = int64(doc.GetFileLength())
-		if ctx := doc.GetContextInfo(); ctx != nil {
-			quotedID = ctx.GetStanzaID()
-		}
-	} else if sticker := msg.GetStickerMessage(); sticker != nil {
-		kind = "sticker"
-		mimeType = sticker.GetMimetype()
-		mediaURL = sticker.GetURL()
-		byteSize = int64(sticker.GetFileLength())
-	} else {
-		kind = "unsupported"
-	}
+	kind, body, mimeType, mediaURL, byteSize, quotedID := extractMessageContent(msg)
 
 	payload := map[string]interface{}{
-		"id":                info.ID,
-		"chat_jid":          info.Chat.String(),
-		"sender_jid":        info.Sender.String(),
-		"sender_push_name":  info.PushName,
-		"is_from_me":        info.IsFromMe,
-		"is_group":          info.IsGroup,
-		"kind":              kind,
-		"timestamp":         info.Timestamp.Unix(),
+		"id":               info.ID,
+		"chat_jid":         info.Chat.String(),
+		"sender_jid":       info.Sender.String(),
+		"sender_push_name": info.PushName,
+		"is_from_me":       info.IsFromMe,
+		"is_group":         info.IsGroup,
+		"kind":             kind,
+		"timestamp":        info.Timestamp.Unix(),
 	}
 	if body != "" {
 		payload["body"] = body
@@ -408,6 +413,134 @@ func (h *helper) emitMessage(v *events.Message) {
 	}
 
 	h.emit(event{Type: "message", Payload: payload})
+}
+
+// emitHistorySync translates a whatsmeow HistorySync blob into the same wire
+// envelopes the live event stream uses, so the Swift ingestion service can
+// backfill pre-pair contacts and chats without any new protocol surface.
+//
+// Pushnames become "contact" events. Each Conversation's messages are sorted
+// by MessageTimestamp descending, capped at historyBacklogCap, then emitted in
+// chronological order as "message" events.
+func (h *helper) emitHistorySync(v *events.HistorySync) {
+	if v == nil || v.Data == nil {
+		return
+	}
+	data := v.Data
+
+	for _, pn := range data.GetPushnames() {
+		jid := pn.GetID()
+		name := pn.GetPushname()
+		if jid == "" || name == "" {
+			continue
+		}
+		phone := jid
+		if at := strings.IndexByte(jid, '@'); at >= 0 {
+			phone = jid[:at]
+		}
+		h.emit(event{Type: "contact", Payload: map[string]interface{}{
+			"jid":          jid,
+			"push_name":    name,
+			"phone_number": phone,
+		}})
+	}
+
+	for _, conv := range data.GetConversations() {
+		h.emitHistoryConversation(conv)
+	}
+}
+
+func (h *helper) emitHistoryConversation(conv *waHistorySync.Conversation) {
+	if conv == nil {
+		return
+	}
+	chatJID := conv.GetID()
+	if chatJID == "" {
+		return
+	}
+	rawMsgs := conv.GetMessages()
+	if len(rawMsgs) == 0 {
+		return
+	}
+
+	// Sort descending by message timestamp, then keep only the newest N. We
+	// then flip to chronological order before emission so downstream stores
+	// can append without resorting.
+	msgs := make([]*waHistorySync.HistorySyncMsg, 0, len(rawMsgs))
+	for _, m := range rawMsgs {
+		if m != nil && m.GetMessage() != nil {
+			msgs = append(msgs, m)
+		}
+	}
+	sort.SliceStable(msgs, func(i, j int) bool {
+		return msgs[i].GetMessage().GetMessageTimestamp() > msgs[j].GetMessage().GetMessageTimestamp()
+	})
+	if len(msgs) > historyBacklogCap {
+		msgs = msgs[:historyBacklogCap]
+	}
+	// Flip to chronological order.
+	for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
+		msgs[i], msgs[j] = msgs[j], msgs[i]
+	}
+
+	isGroup := strings.Contains(chatJID, "@g.us")
+
+	for _, hm := range msgs {
+		wmi := hm.GetMessage()
+		if wmi == nil {
+			continue
+		}
+		inner := wmi.GetMessage()
+		if inner == nil {
+			// Skip control / stub frames — they have no displayable content
+			// in our current schema and would otherwise show as "unsupported".
+			continue
+		}
+		key := wmi.GetKey()
+		if key == nil {
+			continue
+		}
+		id := key.GetID()
+		if id == "" {
+			continue
+		}
+
+		senderJID := key.GetParticipant()
+		if senderJID == "" {
+			// Direct chat: sender is the peer (or self if FromMe).
+			senderJID = chatJID
+		}
+
+		kind, body, mimeType, mediaURL, byteSize, quotedID := extractMessageContent(inner)
+
+		payload := map[string]interface{}{
+			"id":               id,
+			"chat_jid":         chatJID,
+			"sender_jid":       senderJID,
+			"sender_push_name": wmi.GetPushName(),
+			"is_from_me":       key.GetFromMe(),
+			"is_group":         isGroup,
+			"kind":             kind,
+			"timestamp":        int64(wmi.GetMessageTimestamp()),
+		}
+		if body != "" {
+			payload["body"] = body
+		}
+		if mimeType != "" {
+			payload["mime_type"] = mimeType
+		}
+		if mediaURL != "" {
+			payload["media_url"] = mediaURL
+		}
+		if byteSize > 0 {
+			payload["media_byte_size"] = byteSize
+		}
+		if quotedID != "" {
+			payload["quoted_message_id"] = quotedID
+		}
+
+		h.emit(event{Type: "message", Payload: payload})
+	}
 }
 
 func (h *helper) emitReceipt(v *events.Receipt) {
