@@ -1,0 +1,126 @@
+name: MultiverseWP
+options:
+  bundleIdPrefix: com.semihsilistre.multiversewp
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+  groupSortPosition: top
+  developmentLanguage: en
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""
+    ENABLE_HARDENED_RUNTIME: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER: YES
+    GCC_TREAT_WARNINGS_AS_ERRORS: NO
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: NO
+
+packages:
+  GRDB:
+    url: https://github.com/groue/GRDB.swift
+    from: "7.0.0"
+  SwiftProtobuf:
+    url: https://github.com/apple/swift-protobuf
+    from: "1.28.0"
+
+targets:
+  MultiverseWP:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Sources
+    resources:
+      - path: Resources
+    dependencies:
+      - package: GRDB
+        product: GRDB
+      - package: SwiftProtobuf
+        product: SwiftProtobuf
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.semihsilistre.multiversewp
+        PRODUCT_NAME: MultiverseWP
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_NSPrincipalClass: NSApplication
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.social-networking
+        INFOPLIST_KEY_CFBundleDisplayName: MultiverseWP
+        INFOPLIST_KEY_NSHumanReadableCopyright: "© 2026 Semih Silistre"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        CODE_SIGN_ENTITLEMENTS: Resources/MultiverseWP.entitlements
+    preBuildScripts:
+      - name: SwiftLint
+        script: |
+          if which swiftlint >/dev/null; then
+            swiftlint --quiet
+          else
+            echo "warning: SwiftLint not installed"
+          fi
+        basedOnDependencyAnalysis: false
+
+  MultiverseWPTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Tests
+    dependencies:
+      - target: MultiverseWP
+      - package: GRDB
+        product: GRDB
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.semihsilistre.multiversewp.tests
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/MultiverseWP.app/Contents/MacOS/MultiverseWP"
+
+  MultiverseWPUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: UITests
+    dependencies:
+      - target: MultiverseWP
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.semihsilistre.multiversewp.uitests
+        TEST_TARGET_NAME: MultiverseWP
+
+schemes:
+  MultiverseWP:
+    build:
+      targets:
+        MultiverseWP: all
+        MultiverseWPTests: [test]
+        MultiverseWPUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: true
+      coverageTargets:
+        - MultiverseWP
+      targets:
+        - name: MultiverseWPTests
+          parallelizable: true
+          randomExecutionOrder: true
+        - name: MultiverseWPUITests
+          parallelizable: false
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

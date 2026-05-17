@@ -1,0 +1,37 @@
+disabled_rules:
+  - todo
+  - line_length
+  - identifier_name           # GRDB closures use single-letter `t` table param
+  - type_name                 # Account.ID = UUID typealias is idiomatic
+  - missing_docs              # docs land with Phase 4 OSS cut
+  - vertical_whitespace_opening_braces
+  - sorted_imports
+  - implicitly_unwrapped_optional
+  - cyclomatic_complexity     # WireDecoder is a switch dispatcher
+
+opt_in_rules:
+  - empty_count
+  - explicit_init
+  - first_where
+  - force_unwrapping
+  - redundant_nil_coalescing
+  - vertical_whitespace_closing_braces
+
+excluded:
+  - .build
+  - DerivedData
+  - WhatsmeowHelper
+  - MultiverseWP.xcodeproj
+
+force_unwrapping: error
+force_cast: error
+force_try: error
+
+file_length:
+  warning: 500
+  error: 1000
+function_body_length:
+  warning: 80
+  error: 200
+
+reporter: xcode
