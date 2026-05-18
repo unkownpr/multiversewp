@@ -279,7 +279,11 @@ private struct MCPTab: View {
 
 private struct AboutTab: View {
 
+    @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var updater: UpdaterController
+    @SwiftUI.AppStorage(L10n.storageKey) private var language: String = L10n.Language.system.rawValue
+
+    @State private var showWelcomeRestored: Bool = false
 
     private var version: String {
         let dict = Bundle.main.infoDictionary
@@ -304,7 +308,7 @@ private struct AboutTab: View {
                 Text("Version \(version)")
                     .font(.callout)
                     .foregroundStyle(.secondary)
-                Button("Check for Updates Now") {
+                Button(L10n.t("settings.about.checkUpdates")) {
                     updater.checkForUpdates(nil)
                 }
                 .buttonStyle(.bordered)
@@ -312,13 +316,13 @@ private struct AboutTab: View {
                 .disabled(!updater.canCheckForUpdates)
                 .padding(.top, 4)
             }
-            Text("A native macOS WhatsApp client that handles multiple accounts and exposes a local MCP server for AI assistants. Personal-use project, planned open source.")
+            Text(L10n.t("settings.about.tagline"))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: 380)
 
             VStack(spacing: 6) {
-                Text("Built by Semih Silistre")
+                Text(L10n.t("settings.about.builtBy"))
                     .font(.callout)
                 if let url = URL(string: "https://ssilistre.dev") {
                     Link(destination: url) {
@@ -330,6 +334,9 @@ private struct AboutTab: View {
                 }
             }
 
+            languageSection
+            welcomeSection
+
             HStack(spacing: 12) {
                 Button {
                     NSWorkspace.shared.open(
@@ -337,14 +344,14 @@ private struct AboutTab: View {
                             .appendingPathComponent("Library/Application Support/MultiverseWP")
                     )
                 } label: {
-                    Label("Data folder", systemImage: "folder")
+                    Label(L10n.t("settings.about.dataFolder"), systemImage: "folder")
                 }
                 Button {
-                    if let url = URL(string: "https://github.com/semihsilistre/multiversewp") {
+                    if let url = URL(string: "https://github.com/unkownpr/multiversewp") {
                         NSWorkspace.shared.open(url)
                     }
                 } label: {
-                    Label("GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
+                    Label(L10n.t("settings.about.github"), systemImage: "chevron.left.forwardslash.chevron.right")
                 }
             }
             Spacer()
@@ -354,5 +361,50 @@ private struct AboutTab: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var languageSection: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Label(L10n.t("settings.language.label"), systemImage: "globe")
+                        .font(.callout.weight(.semibold))
+                    Spacer()
+                    Picker("", selection: $language) {
+                        ForEach(L10n.Language.allCases) { lang in
+                            Text(lang.displayName).tag(lang.rawValue)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: 180)
+                }
+                Text(L10n.t("settings.language.help"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 4)
+        }
+        .frame(maxWidth: 420)
+    }
+
+    private var welcomeSection: some View {
+        VStack(spacing: 6) {
+            Button {
+                Task {
+                    await environment.resetWelcomeTour()
+                    showWelcomeRestored = true
+                }
+            } label: {
+                Label(L10n.t("settings.about.resetWelcome"), systemImage: "sparkles")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            if showWelcomeRestored {
+                Text(L10n.t("welcome.reseeded.body"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 }

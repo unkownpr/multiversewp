@@ -127,6 +127,22 @@ final class AppEnvironment: ObservableObject {
         settingsOpen = true
     }
 
+    /// Re-seed the welcome demo account on demand. No-ops if a demo
+    /// account already exists; otherwise inserts a fresh one (with three
+    /// pinned intro chats) and flips the persisted flag.
+    func resetWelcomeTour() async {
+        do {
+            let all = try await storage.accounts.allAccounts()
+            if !all.contains(where: { $0.isDemo }) {
+                _ = try await DemoSeed.seed(into: storage)
+            }
+            UserDefaults.standard.set(true, forKey: "multiversewp.demoSeeded")
+            await reloadAccounts()
+        } catch {
+            log.error("resetWelcomeTour failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     func toggleMute(chatID: Chat.ID) async {
         do {
             if var chat = try await storage.chats.chat(id: chatID) {
