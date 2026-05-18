@@ -35,6 +35,10 @@ public enum WAClientEvent: Sendable, Equatable {
     /// outgoing send). It is nil for vanilla read/delivered receipts.
     case deliveryUpdate(messageID: String, status: String, mediaPath: String?)
     case contactUpdate(IncomingContact)
+    /// Group / chat metadata refresh — emitted lazily by the helper when it
+    /// learns a new title via `GetGroupInfo`. Lets the Swift side replace
+    /// the placeholder JID-prefix title with the real group name.
+    case chatInfo(jid: String, title: String, isGroup: Bool)
     case error(String)
 }
 

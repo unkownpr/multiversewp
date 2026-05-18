@@ -114,6 +114,13 @@ enum WireDecoder {
                 businessName: payload["business_name"] as? String,
                 phoneNumber: payload["phone_number"] as? String
             )))
+        case "chat_info":
+            guard
+                let jid = payload["jid"] as? String,
+                let title = payload["title"] as? String
+            else { throw WAClientError.decodingFailed("chat_info missing fields") }
+            let isGroup = (payload["is_group"] as? Bool) ?? jid.hasSuffix("@g.us")
+            return .event(.chatInfo(jid: jid, title: title, isGroup: isGroup))
         case "error":
             return .event(.error(payload["message"] as? String ?? "unknown error"))
         default:

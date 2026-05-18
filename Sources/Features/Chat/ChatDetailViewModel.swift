@@ -94,6 +94,14 @@ final class ChatDetailViewModel: ObservableObject {
         }
     }
 
+    /// Look up the message a given row replies to. Used by the bubble's
+    /// quoted-preview header. Returns nil for messages with no quote or
+    /// when the quoted message hasn't been ingested locally yet.
+    func quotedMessage(for message: Message) -> Message? {
+        guard let id = message.quotedMessageID else { return nil }
+        return messages.first(where: { $0.id == id })
+    }
+
     /// Bump the chat's unread counter so the sidebar re-flags it; lets the
     /// user revisit a chat later. Wired to the chat-header ellipsis menu.
     func markUnreadAgain() async {

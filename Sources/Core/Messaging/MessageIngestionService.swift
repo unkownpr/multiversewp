@@ -69,6 +69,8 @@ public final class MessageIngestionService {
             await updateDelivery(messageID: messageID, status: status, mediaPath: mediaPath, account: account)
         case .contactUpdate(let contact):
             await ingest(contact: contact, account: account)
+        case .chatInfo(let jid, let title, let isGroup):
+            await applyChatInfo(jid: jid, title: title, isGroup: isGroup, account: account)
         case .connected:
             eventBus.publish(.accountConnected(account.id))
         case .disconnected:
@@ -192,6 +194,37 @@ public final class MessageIngestionService {
             }
         } catch {
             log.error("delivery update failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func applyChatInfo(jid: String, title: String, isGroup: Bool, account: Account) async {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        do {
+            if var chat = try await storage.chats.chat(id: jid) {
+                let titleChanged = chat.title != trimmed
+                let groupChanged = chat.isGroup != isGroup
+                guard titleChanged || groupChanged else { return }
+                chat.title = trimmed
+                chat.isGroup = isGroup
+                try await storage.chats.upsert(chat)
+                eventBus.publish(.chatUpdated(chat))
+            } else {
+                // First time we see this jid in a chat_info event but no row
+                // yet — seed a stub so the upcoming message ingestion can
+                // upsert against an existing title.
+                let chat = Chat(
+                    id: jid,
+                    accountID: account.id,
+                    jid: jid,
+                    title: trimmed,
+                    isGroup: isGroup
+                )
+                try await storage.chats.upsert(chat)
+                eventBus.publish(.chatUpdated(chat))
+            }
+        } catch {
+            log.error("applyChatInfo failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 

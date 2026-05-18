@@ -137,6 +137,7 @@ struct ChatDetailColumn: View {
                         MessageBubble(
                             message: message,
                             media: viewModel.media[message.id],
+                            quoted: viewModel.quotedMessage(for: message),
                             onDownload: { id in
                                 Task { await viewModel.downloadMedia(for: id) }
                             }
@@ -174,6 +175,7 @@ private struct MessageBubble: View {
 
     let message: Message
     let media: MediaItem?
+    let quoted: Message?
     let onDownload: (Message.ID) -> Void
 
     var body: some View {
@@ -204,6 +206,42 @@ private struct MessageBubble: View {
         }
     }
 
+    @ViewBuilder
+    private func quotedPreview(_ quoted: Message) -> some View {
+        HStack(spacing: 8) {
+            Rectangle()
+                .fill(WATheme.Colors.accentMid)
+                .frame(width: 3)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(quoted.senderDisplayName ?? quoted.senderJID)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(WATheme.Colors.accentDark)
+                    .lineLimit(1)
+                Text(quoted.body ?? quotedPlaceholder(for: quoted))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(WATheme.Colors.bubbleText.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func quotedPlaceholder(for message: Message) -> String {
+        switch message.kind {
+        case .image: return "📷"
+        case .video: return "🎬"
+        case .audio: return "🎤"
+        case .document: return "📄"
+        case .sticker: return "🪄"
+        case .location: return "📍"
+        case .contact: return "👤"
+        default: return "…"
+        }
+    }
+
     /// Friendly hint used in empty-message bubbles so the user sees
     /// *something* instead of a blank green/white rectangle. Examples:
     /// stickers we couldn't decode, group system events, deleted-for-me
@@ -224,6 +262,9 @@ private struct MessageBubble: View {
                 Text(name)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(WATheme.Colors.accentDark)
+            }
+            if let quoted {
+                quotedPreview(quoted)
             }
             mediaView
             if let body = message.body, !body.isEmpty {

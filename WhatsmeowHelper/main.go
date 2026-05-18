@@ -32,6 +32,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	"go.mau.fi/whatsmeow"
@@ -240,6 +241,13 @@ type helper struct {
 	protoCacheMu sync.Mutex
 	protoCache   map[string]*waE2E.Message
 	protoOrder   []string
+
+	// groupTitles caches the group-chat name we've already fetched via
+	// client.GetGroupInfo. Lets the helper emit a chat_info event the
+	// first time it sees a group message, then skip the network round-trip
+	// on subsequent messages from the same group.
+	groupTitlesMu sync.Mutex
+	groupTitles   map[string]string
 
 	shutdownOnce sync.Once
 }
@@ -681,6 +689,58 @@ func (h *helper) emitMessage(v *events.Message) {
 	}
 
 	h.emit(event{Type: "message", Payload: payload})
+
+	if info.IsGroup {
+		go h.ensureGroupChatInfo(info.Chat.String())
+	}
+}
+
+// ensureGroupChatInfo lazily fetches the human-readable name for a group
+// JID and emits a chat_info event the first time we learn it. Subsequent
+// messages from the same group reuse the cached title.
+func (h *helper) ensureGroupChatInfo(chatJID string) {
+	h.groupTitlesMu.Lock()
+	if h.groupTitles == nil {
+		h.groupTitles = make(map[string]string)
+	}
+	cached, ok := h.groupTitles[chatJID]
+	h.groupTitlesMu.Unlock()
+	if ok && cached != "" {
+		return
+	}
+
+	h.clientMu.Lock()
+	client := h.client
+	h.clientMu.Unlock()
+	if client == nil {
+		return
+	}
+
+	jid, err := types.ParseJID(chatJID)
+	if err != nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(h.rootCtx, 8*time.Second)
+	defer cancel()
+	info, err := client.GetGroupInfo(ctx, jid)
+	if err != nil || info == nil {
+		return
+	}
+
+	title := strings.TrimSpace(info.GroupName.Name)
+	if title == "" {
+		return
+	}
+
+	h.groupTitlesMu.Lock()
+	h.groupTitles[chatJID] = title
+	h.groupTitlesMu.Unlock()
+
+	h.emit(event{Type: "chat_info", Payload: map[string]interface{}{
+		"jid":      chatJID,
+		"title":    title,
+		"is_group": true,
+	}})
 }
 
 // emitHistorySync translates a whatsmeow HistorySync blob into the same wire
