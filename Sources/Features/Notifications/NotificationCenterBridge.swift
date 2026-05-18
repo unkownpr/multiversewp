@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import UserNotifications
 
@@ -17,6 +18,34 @@ public final class NotificationCenterBridge: MessageIngestionService.Notifier {
             log.info("Notification authorization granted: \(granted, privacy: .public)")
         } catch {
             log.error("Authorization failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    public func currentAuthorizationStatus() async -> UNAuthorizationStatus {
+        await center.notificationSettings().authorizationStatus
+    }
+
+    public func openSystemNotificationSettings() {
+        let urls = [
+            "x-apple.systempreferences:com.apple.preference.notifications",
+            "x-apple.systempreferences:com.apple.Notifications-Settings.extension"
+        ]
+        for raw in urls {
+            if let url = URL(string: raw), NSWorkspace.shared.open(url) { return }
+        }
+    }
+
+    public func sendTestNotification() async {
+        let content = UNMutableNotificationContent()
+        content.title = "MultiverseWP"
+        content.body = "Test notification — notifications are working."
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: "test-\(UUID().uuidString)",
+                                            content: content, trigger: nil)
+        do {
+            try await center.add(request)
+        } catch {
+            log.error("Test deliver failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 

@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UserNotifications
 
 struct SettingsSheet: View {
 
@@ -11,14 +12,16 @@ struct SettingsSheet: View {
     enum Tab: String, Hashable, CaseIterable, Identifiable {
         case accounts
         case mcp
+        case notifications
         case about
         var id: String { rawValue }
 
-        var label: String {
+        var labelKey: String {
             switch self {
-            case .accounts: "Accounts"
-            case .mcp: "AI / MCP"
-            case .about: "About"
+            case .accounts: "settings.tab.accounts"
+            case .mcp: "settings.tab.mcp"
+            case .notifications: "settings.tab.notifications"
+            case .about: "settings.tab.about"
             }
         }
 
@@ -26,6 +29,7 @@ struct SettingsSheet: View {
             switch self {
             case .accounts: "person.crop.circle"
             case .mcp: "brain"
+            case .notifications: "bell.badge"
             case .about: "info.circle"
             }
         }
@@ -47,7 +51,7 @@ struct SettingsSheet: View {
             HStack(spacing: 0) {
                 List(selection: $selection) {
                     ForEach(Tab.allCases) { tab in
-                        Label(tab.label, systemImage: tab.symbol)
+                        Label(L10n.t(tab.labelKey), systemImage: tab.symbol)
                             .tag(tab)
                     }
                 }
@@ -60,6 +64,7 @@ struct SettingsSheet: View {
                     switch selection {
                     case .accounts: AccountsTab()
                     case .mcp: MCPTab()
+                    case .notifications: NotificationsTab()
                     case .about: AboutTab()
                     }
                 }
@@ -67,6 +72,79 @@ struct SettingsSheet: View {
             }
         }
         .frame(minWidth: 640, minHeight: 460)
+    }
+}
+
+private struct NotificationsTab: View {
+
+    @EnvironmentObject private var environment: AppEnvironment
+    @State private var status: UNAuthorizationStatus = .notDetermined
+
+    private var statusKey: String {
+        switch status {
+        case .authorized: "settings.notifications.status.authorized"
+        case .denied: "settings.notifications.status.denied"
+        case .notDetermined: "settings.notifications.status.notDetermined"
+        case .provisional: "settings.notifications.status.provisional"
+        @unknown default: "settings.notifications.status.unknown"
+        }
+    }
+
+    private var statusColor: Color {
+        switch status {
+        case .authorized: .green
+        case .denied: .red
+        case .notDetermined: .orange
+        default: .secondary
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text(L10n.t("settings.notifications.heading"))
+                .font(.headline)
+            Text(L10n.t("settings.notifications.description"))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 10) {
+                Image(systemName: "circle.fill")
+                    .foregroundStyle(statusColor)
+                    .font(.system(size: 8))
+                Text(L10n.t("settings.notifications.status"))
+                    .foregroundStyle(.secondary)
+                Text(L10n.t(statusKey))
+                    .fontWeight(.medium)
+            }
+
+            HStack(spacing: 10) {
+                if status == .notDetermined {
+                    Button(L10n.t("settings.notifications.request")) {
+                        Task {
+                            await environment.notifications.requestAuthorizationIfNeeded()
+                            await refresh()
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                Button(L10n.t("settings.notifications.openSettings")) {
+                    environment.notifications.openSystemNotificationSettings()
+                }
+                Button(L10n.t("settings.notifications.test")) {
+                    Task { await environment.notifications.sendTestNotification() }
+                }
+                .disabled(status != .authorized && status != .provisional)
+            }
+
+            Spacer()
+        }
+        .padding(20)
+        .task { await refresh() }
+    }
+
+    @MainActor
+    private func refresh() async {
+        status = await environment.notifications.currentAuthorizationStatus()
     }
 }
 
