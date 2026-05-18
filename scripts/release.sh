@@ -133,14 +133,14 @@ if [ -z "$ED_SIGNATURE" ]; then
 fi
 
 # Note on the feed URL: must match SUFeedURL baked into the Info.plist.
-DOWNLOAD_URL="https://github.com/semihsilistre/multiversewp/releases/download/v${VERSION}/MultiverseWP-${VERSION}.dmg"
+DOWNLOAD_URL="https://github.com/unkownpr/multiversewp/releases/download/v${VERSION}/MultiverseWP-${VERSION}.dmg"
 
 cat >"$APPCAST_PATH" <<EOF
 <?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
     <channel>
         <title>MultiverseWP</title>
-        <link>https://semihsilistre.github.io/multiversewp/appcast.xml</link>
+        <link>https://unkownpr.github.io/multiversewp/appcast.xml</link>
         <description>Auto-update feed for MultiverseWP.</description>
         <language>en</language>
         <item>

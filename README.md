@@ -64,7 +64,7 @@ for the refresh procedure.
 
 Grab the latest signed DMG from the releases page:
 
-`https://github.com/semihsilistre/multiversewp/releases/latest`
+`https://github.com/unkownpr/multiversewp/releases/latest`
 
 *(Replace this URL with the real one once the first release ships.)*
 

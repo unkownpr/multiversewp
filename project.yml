@@ -59,7 +59,7 @@ targets:
         NSPrincipalClass: NSApplication
         # Sparkle 2.x auto-update keys
         # Feed lives on the gh-pages branch of the multiversewp repo.
-        SUFeedURL: https://semihsilistre.github.io/multiversewp/appcast.xml
+        SUFeedURL: https://unkownpr.github.io/multiversewp/appcast.xml
         # Required when the host app is sandboxed; harmless when not. See
         # docs/auto-update.md for the sandbox / Sparkle interaction notes.
         SUEnableInstallerLauncherService: true

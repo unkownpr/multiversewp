@@ -12,7 +12,7 @@ manually, and how to opt out.
 
 - The app embeds a public EdDSA key (`SUPublicEDKey` in `Info.plist`).
 - Once per launch (and roughly every 24 hours afterwards) Sparkle fetches
-  `https://semihsilistre.github.io/multiversewp/appcast.xml`.
+  `https://unkownpr.github.io/multiversewp/appcast.xml`.
 - If the appcast advertises a version newer than the running build,
   Sparkle verifies the EdDSA signature of the new DMG against the bundled
   public key. If the signature does not match, the update is rejected and
