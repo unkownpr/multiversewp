@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+    <channel>
+        <title>MultiverseWP</title>
+        <link>https://semihsilistre.github.io/multiversewp/appcast.xml</link>
+        <description>Auto-update feed for MultiverseWP.</description>
+        <language>en</language>
+        <!-- First signed release will fill in this item via scripts/release.sh -->
+    </channel>
+</rss>
