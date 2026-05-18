@@ -38,13 +38,18 @@ struct ChatListColumn: View {
                     Button {
                         Task { await environment.markAllChatsRead(for: accountID) }
                     } label: {
-                        Label("Mark all as read", systemImage: "checkmark.circle")
+                        Label(L10n.t("chatlist.menu.markAllRead"), systemImage: "checkmark.circle")
+                    }
+                    Button {
+                        Task { await environment.refreshNewsFromGitHub() }
+                    } label: {
+                        Label(L10n.t("chatlist.menu.refreshNews"), systemImage: "arrow.clockwise")
                     }
                     Divider()
                     Button {
                         environment.requestAddAccount()
                     } label: {
-                        Label("Link new WhatsApp", systemImage: "plus.circle")
+                        Label(L10n.t("chatlist.menu.link"), systemImage: "plus.circle")
                     }
                 } label: {
                     Image(systemName: "square.and.pencil")
@@ -53,7 +58,7 @@ struct ChatListColumn: View {
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .fixedSize()
-                .help("Account actions")
+                .help(L10n.t("account.settings"))
             } else {
                 Button {
                     environment.requestAddAccount()
@@ -62,7 +67,7 @@ struct ChatListColumn: View {
                         .font(.system(size: 16, weight: .medium))
                 }
                 .buttonStyle(.plain)
-                .help("Link new WhatsApp")
+                .help(L10n.t("chatlist.menu.link"))
             }
         }
         .padding(.horizontal, 14)

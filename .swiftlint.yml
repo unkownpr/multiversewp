@@ -33,5 +33,8 @@ file_length:
 function_body_length:
   warning: 80
   error: 200
+type_body_length:
+  warning: 350
+  error: 500
 
 reporter: xcode

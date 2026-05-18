@@ -37,10 +37,10 @@ struct ChatDetailColumn: View {
                 Image(systemName: "bubble.left.and.bubble.right.fill")
                     .font(.system(size: 64))
                     .foregroundStyle(WATheme.Colors.accent.opacity(0.55))
-                Text("Pick a chat to start messaging")
+                Text(L10n.t("chat.detail.pick.title"))
                     .font(.title3)
                     .foregroundStyle(.secondary)
-                Text("Your conversations across every connected WhatsApp account live here.")
+                Text(L10n.t("chat.detail.pick.description"))
                     .font(.callout)
                     .foregroundStyle(.secondary.opacity(0.8))
                     .multilineTextAlignment(.center)
@@ -61,7 +61,7 @@ struct ChatDetailColumn: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(viewModel.chat?.title ?? "")
                     .font(.headline)
-                Text(viewModel.chat?.isGroup == true ? "Group chat" : "online")
+                Text(viewModel.chat?.isGroup == true ? L10n.t("chat.detail.header.group") : L10n.t("chat.detail.header.online"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -70,7 +70,7 @@ struct ChatDetailColumn: View {
             Menu {
                 Button {
                     Task { await viewModel.markUnreadAgain() }
-                } label: { Label("Mark as unread", systemImage: "circle.fill") }
+                } label: { Label(L10n.t("chat.detail.markUnread"), systemImage: "circle.fill") }
 
                 Button {
                     if let chat = viewModel.chat {
@@ -78,7 +78,7 @@ struct ChatDetailColumn: View {
                     }
                 } label: {
                     Label(
-                        viewModel.chat?.isMuted == true ? "Unmute" : "Mute notifications",
+                        viewModel.chat?.isMuted == true ? L10n.t("chat.detail.unmute") : L10n.t("chat.detail.mute"),
                         systemImage: viewModel.chat?.isMuted == true ? "speaker.wave.2" : "speaker.slash"
                     )
                 }
@@ -89,7 +89,7 @@ struct ChatDetailColumn: View {
                     }
                 } label: {
                     Label(
-                        viewModel.chat?.isPinned == true ? "Unpin" : "Pin chat",
+                        viewModel.chat?.isPinned == true ? L10n.t("chat.detail.unpin") : L10n.t("chat.detail.pin"),
                         systemImage: "pin"
                     )
                 }
@@ -98,7 +98,7 @@ struct ChatDetailColumn: View {
 
                 Button {
                     revealMediaFolder()
-                } label: { Label("Reveal media folder", systemImage: "folder") }
+                } label: { Label(L10n.t("chat.detail.revealMedia"), systemImage: "folder") }
 
                 Divider()
 
@@ -106,14 +106,14 @@ struct ChatDetailColumn: View {
                     if let chat = viewModel.chat {
                         Task { await environment.clearChat(chatID: chat.id) }
                     }
-                } label: { Label("Clear messages", systemImage: "trash") }
+                } label: { Label(L10n.t("chat.detail.clearMessages"), systemImage: "trash") }
             } label: {
                 Image(systemName: "ellipsis")
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
-            .help("Chat actions — mute / pin / mark unread / reveal media / clear")
+            .help(L10n.t("chat.detail.actions"))
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

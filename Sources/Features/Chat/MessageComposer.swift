@@ -72,7 +72,7 @@ struct MessageComposer: View {
     }
 
     private var textFieldPlaceholder: String {
-        attachment == nil ? "Type a message" : "Add a caption (optional)"
+        attachment == nil ? L10n.t("composer.placeholder") : L10n.t("composer.caption")
     }
 
     @ViewBuilder

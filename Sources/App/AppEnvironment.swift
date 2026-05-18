@@ -88,6 +88,11 @@ final class AppEnvironment: ObservableObject {
             }
             if !isUITest {
                 await notifications.requestAuthorizationIfNeeded()
+                // Best-effort GitHub Releases pull so the demo "News &
+                // Updates" chat shows whatever ships in the most recent
+                // tagged release. No-op on flight without a demo account
+                // or when offline.
+                Task { await self.refreshNewsFromGitHub() }
             }
             log.info("Bootstrap complete with \(self.accounts.count, privacy: .public) account(s)")
         } catch {
@@ -138,8 +143,57 @@ final class AppEnvironment: ObservableObject {
             }
             UserDefaults.standard.set(true, forKey: "multiversewp.demoSeeded")
             await reloadAccounts()
+            // Pull live news after seeding so the row is fresh.
+            await refreshNewsFromGitHub()
         } catch {
             log.error("resetWelcomeTour failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Replace the demo "News & Updates" chat's messages with the latest
+    /// GitHub Releases (tag, title, body, date). Safe to call repeatedly —
+    /// uses the same message IDs so each fetch upserts in place.
+    func refreshNewsFromGitHub() async {
+        do {
+            guard let demo = try await storage.accounts.allAccounts().first(where: { $0.isDemo })
+            else { return }
+            let chatID = "demo-news"
+            guard try await storage.chats.chat(id: chatID) != nil else { return }
+            let entries = await NewsFeed.fetch()
+            guard !entries.isEmpty else { return }
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .none
+            let sorted = entries.sorted(by: { $0.publishedAt < $1.publishedAt })
+            // Replace synthetic news messages by upserting new ones with
+            // stable, GitHub-tag-derived IDs.
+            for (index, entry) in sorted.enumerated() {
+                let body = "📢 \(entry.title) — \(formatter.string(from: entry.publishedAt))\n\n\(entry.body.trimmingCharacters(in: .whitespacesAndNewlines))"
+                let message = Message(
+                    id: "demo-news-gh-\(entry.tag)",
+                    chatID: chatID,
+                    accountID: demo.id,
+                    senderJID: "demo@multiversewp",
+                    senderDisplayName: "MultiverseWP",
+                    direction: .incoming,
+                    kind: .system,
+                    body: body,
+                    timestamp: entry.publishedAt.addingTimeInterval(Double(index)),
+                    deliveryStatus: .delivered
+                )
+                try await storage.messages.upsert(message)
+            }
+            // Update chat preview / timestamp from the latest release.
+            if let latest = sorted.last,
+               var chat = try await storage.chats.chat(id: chatID) {
+                chat.lastMessagePreview = "📢 \(latest.title)"
+                chat.lastMessageTimestamp = latest.publishedAt
+                try await storage.chats.upsert(chat)
+                eventBus.publish(.chatUpdated(chat))
+            }
+            eventBus.publish(.accountConnected(demo.id))
+        } catch {
+            log.error("refreshNewsFromGitHub failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
