@@ -61,9 +61,17 @@ struct ChatDetailColumn: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(viewModel.chat?.title ?? "")
                     .font(.headline)
-                Text(viewModel.chat?.isGroup == true ? L10n.t("chat.detail.header.group") : L10n.t("chat.detail.header.online"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if let chat = viewModel.chat {
+                    if chat.isGroup {
+                        Text(L10n.t("chat.detail.header.group"))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else if let subtitle = ChatHeaderSubtitle.format(jid: chat.jid) {
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
             Spacer()
 
@@ -168,6 +176,29 @@ struct ChatDetailColumn: View {
             }
         )
         .background(WATheme.Colors.detailHeader)
+    }
+}
+
+private enum ChatHeaderSubtitle {
+
+    // We do not yet wire whatsmeow presence events through to the UI, so
+    // showing "online" for every contact was wrong. Until presence lands,
+    // the solo-chat subtitle becomes the contact's pretty-printed phone
+    // number — informative, accurate, and not lying about status.
+    static func format(jid: String) -> String? {
+        let local = String(jid.split(separator: "@").first ?? "")
+        guard !local.isEmpty,
+              local.allSatisfy({ $0.isNumber }),
+              local.count >= 7 else { return nil }
+        var digits = Array(local)
+        var chunks: [String] = []
+        while digits.count > 2 {
+            let pair = String(digits.suffix(2))
+            chunks.insert(pair, at: 0)
+            digits.removeLast(2)
+        }
+        if !digits.isEmpty { chunks.insert(String(digits), at: 0) }
+        return "+" + chunks.joined(separator: " ")
     }
 }
 
