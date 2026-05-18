@@ -21,6 +21,7 @@ final class AppEnvironment: ObservableObject {
     @Published private(set) var selectedAccountID: Account.ID?
     @Published private(set) var selectedChatID: Chat.ID?
     @Published private(set) var totalUnread: Int = 0
+    @Published private(set) var presence: [String: PresenceState] = [:]
 
     static let bundleIdentifier = "com.semihsilistre.multiversewp"
 
@@ -28,6 +29,7 @@ final class AppEnvironment: ObservableObject {
     private var bootstrapped = false
     private let isUITest: Bool
     private var unreadSink: AnyCancellable?
+    private var presenceSink: AnyCancellable?
 
     init(
         storage: AppStorage,
@@ -98,6 +100,21 @@ final class AppEnvironment: ObservableObject {
                         break
                     }
                 }
+            presenceSink = eventBus.publisher
+                .sink { [weak self] event in
+                    switch event {
+                    case .presence(let jid, let isOnline, let lastSeen):
+                        Task { @MainActor [weak self] in
+                            self?.applyPresence(jid: jid, isOnline: isOnline, lastSeen: lastSeen)
+                        }
+                    case .chatPresence(let chatJID, let isTyping, let isRecording):
+                        Task { @MainActor [weak self] in
+                            self?.applyChatPresence(chatJID: chatJID, isTyping: isTyping, isRecording: isRecording)
+                        }
+                    default:
+                        break
+                    }
+                }
             if !isUITest {
                 await notifications.requestAuthorizationIfNeeded()
                 // Best-effort GitHub Releases pull so the demo "News &
@@ -147,6 +164,20 @@ final class AppEnvironment: ObservableObject {
         } catch {
             log.error("totalUnread failed: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    private func applyPresence(jid: String, isOnline: Bool, lastSeen: Date?) {
+        var state = presence[jid] ?? PresenceState()
+        state.isOnline = isOnline
+        if let lastSeen { state.lastSeen = lastSeen }
+        presence[jid] = state
+    }
+
+    private func applyChatPresence(chatJID: String, isTyping: Bool, isRecording: Bool) {
+        var state = presence[chatJID] ?? PresenceState()
+        state.isTyping = isTyping
+        state.isRecording = isRecording
+        presence[chatJID] = state
     }
 
     func openSettings() {
@@ -416,6 +447,13 @@ final class AppEnvironment: ObservableObject {
                     // that the local store still has as unread.
                     if let client = clients[chat.accountID] {
                         try? await client.markChatRead(chatJID: chat.jid)
+                        // Lazily ask the server to stream presence for this
+                        // contact. Subscribe is cheap and the helper sends
+                        // our PresenceAvailable beforehand so the server
+                        // starts mirroring the contact's online state back.
+                        if !chat.isGroup {
+                            try? await client.subscribePresence(jid: chat.jid)
+                        }
                     }
                 }
             } catch {

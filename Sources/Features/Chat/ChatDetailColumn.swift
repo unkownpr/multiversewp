@@ -66,10 +66,12 @@ struct ChatDetailColumn: View {
                         Text(L10n.t("chat.detail.header.group"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                    } else if let subtitle = ChatHeaderSubtitle.format(jid: chat.jid) {
-                        Text(subtitle)
+                    } else {
+                        let state = environment.presence[chat.jid]
+                        let (label, accent) = ChatHeaderSubtitle.label(jid: chat.jid, state: state)
+                        Text(label)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(accent ? WATheme.Colors.accent : .secondary)
                     }
                 }
             }
@@ -181,11 +183,23 @@ struct ChatDetailColumn: View {
 
 private enum ChatHeaderSubtitle {
 
-    // We do not yet wire whatsmeow presence events through to the UI, so
-    // showing "online" for every contact was wrong. Until presence lands,
-    // the solo-chat subtitle becomes the contact's pretty-printed phone
-    // number — informative, accurate, and not lying about status.
-    static func format(jid: String) -> String? {
+    /// Returns the subtitle text and whether it should render in the
+    /// accent color. Priority: typing > recording > online > last seen
+    /// > formatted phone number. Falls back to the JID when presence is
+    /// unknown and the local part is not numeric (rare).
+    static func label(jid: String, state: PresenceState?) -> (String, Bool) {
+        if let state {
+            if state.isTyping { return (L10n.t("chat.detail.header.typing"), true) }
+            if state.isRecording { return (L10n.t("chat.detail.header.recording"), true) }
+            if state.isOnline { return (L10n.t("chat.detail.header.online"), true) }
+            if let lastSeen = state.lastSeen {
+                return (formatLastSeen(lastSeen), false)
+            }
+        }
+        return (prettyPhone(jid: jid) ?? jid, false)
+    }
+
+    private static func prettyPhone(jid: String) -> String? {
         let local = String(jid.split(separator: "@").first ?? "")
         guard !local.isEmpty,
               local.allSatisfy({ $0.isNumber }),
@@ -199,6 +213,29 @@ private enum ChatHeaderSubtitle {
         }
         if !digits.isEmpty { chunks.insert(String(digits), at: 0) }
         return "+" + chunks.joined(separator: " ")
+    }
+
+    private static func formatLastSeen(_ date: Date) -> String {
+        let now = Date()
+        let interval = now.timeIntervalSince(date)
+        if interval < 60 {
+            return L10n.t("chat.detail.header.lastSeenJustNow")
+        }
+        let formatter = DateFormatter()
+        let calendar = Calendar.current
+        if calendar.isDateInToday(date) {
+            formatter.dateStyle = .none
+            formatter.timeStyle = .short
+        } else if calendar.isDateInYesterday(date) {
+            formatter.dateStyle = .none
+            formatter.timeStyle = .short
+            let time = formatter.string(from: date)
+            return String(format: L10n.t("chat.detail.header.lastSeen"), "\(time)")
+        } else {
+            formatter.dateStyle = .short
+            formatter.timeStyle = .short
+        }
+        return String(format: L10n.t("chat.detail.header.lastSeen"), formatter.string(from: date))
     }
 }
 

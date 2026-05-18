@@ -39,6 +39,15 @@ public enum WAClientEvent: Sendable, Equatable {
     /// learns a new title via `GetGroupInfo`. Lets the Swift side replace
     /// the placeholder JID-prefix title with the real group name.
     case chatInfo(jid: String, title: String, isGroup: Bool)
+    /// Whatsmeow Presence event for a contact JID we subscribed to. Online
+    /// transitions arrive with `isOnline = true` and `lastSeen = nil`;
+    /// offline transitions may carry a `lastSeen` timestamp when the
+    /// contact has not hidden it.
+    case presence(jid: String, isOnline: Bool, lastSeen: Date?)
+    /// Whatsmeow ChatPresence event — composing / recording indicator for
+    /// the chat the user has open. State resets to neither when the
+    /// contact stops typing for ~10 seconds.
+    case chatPresence(chatJID: String, isTyping: Bool, isRecording: Bool)
     case error(String)
 }
 
@@ -201,6 +210,7 @@ public protocol WAClient: AnyObject, Sendable {
     func listGroupMembers(chatJID: String) async throws -> [GroupMemberInfo]
     func createGroup(subject: String, participantJIDs: [String]) async throws -> CreatedGroupInfo
     func checkPhone(_ phoneNumber: String) async throws -> PhoneCheckResult
+    func subscribePresence(jid: String) async throws
 }
 
 public struct WAClientFactory: Sendable {

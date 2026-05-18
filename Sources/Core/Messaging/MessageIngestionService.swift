@@ -71,6 +71,10 @@ public final class MessageIngestionService {
             await ingest(contact: contact, account: account)
         case .chatInfo(let jid, let title, let isGroup):
             await applyChatInfo(jid: jid, title: title, isGroup: isGroup, account: account)
+        case .presence(let jid, let isOnline, let lastSeen):
+            eventBus.publish(.presence(jid: jid, isOnline: isOnline, lastSeen: lastSeen))
+        case .chatPresence(let chatJID, let isTyping, let isRecording):
+            eventBus.publish(.chatPresence(chatJID: chatJID, isTyping: isTyping, isRecording: isRecording))
         case .connected:
             eventBus.publish(.accountConnected(account.id))
         case .disconnected:

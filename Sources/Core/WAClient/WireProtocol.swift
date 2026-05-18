@@ -10,6 +10,7 @@ enum WireCommand: Sendable {
     case listGroupMembers(chatJID: String)
     case createGroup(subject: String, participantJIDs: [String])
     case checkPhone(phoneNumber: String)
+    case subscribePresence(jid: String)
 }
 
 struct WireEnvelope: Sendable {
@@ -71,6 +72,9 @@ enum WireEncoder {
         case .checkPhone(let phoneNumber):
             dict["type"] = "check_phone"
             dict["payload"] = ["phone_number": phoneNumber]
+        case .subscribePresence(let jid):
+            dict["type"] = "subscribe_presence"
+            dict["payload"] = ["jid": jid]
         }
         return try JSONSerialization.data(withJSONObject: dict, options: [])
     }
@@ -141,6 +145,27 @@ enum WireDecoder {
             else { throw WAClientError.decodingFailed("chat_info missing fields") }
             let isGroup = (payload["is_group"] as? Bool) ?? jid.hasSuffix("@g.us")
             return .event(.chatInfo(jid: jid, title: title, isGroup: isGroup))
+        case "presence":
+            guard let jid = payload["jid"] as? String else {
+                throw WAClientError.decodingFailed("presence missing jid")
+            }
+            let unavailable = (payload["unavailable"] as? Bool) ?? false
+            let lastSeen: Date?
+            if let unix = payload["last_seen"] as? Double {
+                lastSeen = Date(timeIntervalSince1970: unix)
+            } else if let unix = payload["last_seen"] as? Int {
+                lastSeen = Date(timeIntervalSince1970: TimeInterval(unix))
+            } else {
+                lastSeen = nil
+            }
+            return .event(.presence(jid: jid, isOnline: !unavailable, lastSeen: lastSeen))
+        case "chat_presence":
+            guard let chatJID = payload["chat_jid"] as? String else {
+                throw WAClientError.decodingFailed("chat_presence missing chat_jid")
+            }
+            let state = payload["state"] as? String ?? ""
+            let media = payload["media"] as? String ?? ""
+            return .event(.chatPresence(chatJID: chatJID, isTyping: state == "composing", isRecording: media == "audio"))
         case "error":
             return .event(.error(payload["message"] as? String ?? "unknown error"))
         default:

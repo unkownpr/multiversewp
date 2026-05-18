@@ -73,6 +73,11 @@ public final class MockWAClient: WAClient, @unchecked Sendable {
         )
     }
 
+    public var subscribePresenceCalls: [String] = []
+    public func subscribePresence(jid: String) async throws {
+        subscribePresenceCalls.append(jid)
+    }
+
     public func emit(_ event: WAClientEvent) {
         subject.send(event)
     }

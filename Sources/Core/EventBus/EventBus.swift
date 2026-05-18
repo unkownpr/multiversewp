@@ -10,6 +10,8 @@ public enum AppEvent: Sendable {
     case contactUpdated(Contact)
     case qrCode(accountID: Account.ID, code: String)
     case pairSuccess(accountID: Account.ID)
+    case presence(jid: String, isOnline: Bool, lastSeen: Date?)
+    case chatPresence(chatJID: String, isTyping: Bool, isRecording: Bool)
     case error(accountID: Account.ID?, message: String)
 }
 

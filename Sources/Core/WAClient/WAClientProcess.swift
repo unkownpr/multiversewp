@@ -173,6 +173,10 @@ final class WAClientProcess: WAClient, @unchecked Sendable {
         )
     }
 
+    func subscribePresence(jid: String) async throws {
+        _ = try await call(.subscribePresence(jid: jid))
+    }
+
     private func ensureSessionDirectory() throws -> URL {
         let fileManager = FileManager.default
         let supportDir = try fileManager.url(

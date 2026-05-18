@@ -335,6 +335,8 @@ func (h *helper) dispatch(cmd command) {
 		h.handleCreateGroup(cmd)
 	case "check_phone":
 		h.handleCheckPhone(cmd)
+	case "subscribe_presence":
+		h.handleSubscribePresence(cmd)
 	default:
 		h.replyError(cmd.ID, fmt.Sprintf("unknown command: %s", cmd.Type))
 	}
@@ -463,6 +465,27 @@ func (h *helper) handleEvent(evt interface{}) {
 		}})
 	case *events.HistorySync:
 		h.emitHistorySync(v)
+	case *events.Presence:
+		// Whatsmeow only delivers Presence for JIDs we have subscribed to.
+		// We subscribe in handleListChats so the chat list bootstrap is
+		// enough; the From JID is the contact whose presence changed.
+		payload := map[string]interface{}{
+			"jid":         v.From.String(),
+			"unavailable": v.Unavailable,
+		}
+		if !v.LastSeen.IsZero() {
+			payload["last_seen"] = v.LastSeen.Unix()
+		}
+		h.emit(event{Type: "presence", Payload: payload})
+	case *events.ChatPresence:
+		// Typing / recording indicator. State is "composing" or "paused";
+		// Media is "" for typing, "audio" for recording.
+		h.emit(event{Type: "chat_presence", Payload: map[string]interface{}{
+			"chat_jid": v.MessageSource.Chat.String(),
+			"sender":   v.MessageSource.Sender.String(),
+			"state":    string(v.State),
+			"media":    string(v.Media),
+		}})
 	}
 }
 
@@ -1363,6 +1386,49 @@ func (h *helper) handleCheckPhone(cmd command) {
 		}
 		h.replyOK(cmd.ID, out)
 	}()
+}
+
+func (h *helper) handleSubscribePresence(cmd command) {
+	var payload struct {
+		JID string `json:"jid"`
+	}
+	if err := json.Unmarshal(cmd.Payload, &payload); err != nil {
+		h.replyError(cmd.ID, fmt.Sprintf("invalid payload: %v", err))
+		return
+	}
+	if payload.JID == "" {
+		h.replyError(cmd.ID, "jid is required")
+		return
+	}
+
+	h.clientMu.Lock()
+	client := h.client
+	h.clientMu.Unlock()
+	if client == nil || !client.IsConnected() {
+		h.replyError(cmd.ID, "not connected")
+		return
+	}
+
+	jid, err := types.ParseJID(payload.JID)
+	if err != nil {
+		h.replyError(cmd.ID, fmt.Sprintf("invalid jid: %v", err))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(h.rootCtx, 10*time.Second)
+	defer cancel()
+
+	// Whatsmeow requires us to broadcast our own presence as Available at
+	// least once before the server starts streaming the contacts' presence
+	// to us. SendPresence is idempotent so calling it on every subscribe
+	// is fine.
+	_ = client.SendPresence(ctx, types.PresenceAvailable)
+
+	if err := client.SubscribePresence(ctx, jid); err != nil {
+		h.replyError(cmd.ID, fmt.Sprintf("subscribe_presence: %v", err))
+		return
+	}
+	h.replyOK(cmd.ID, nil)
 }
 
 // findExistingMediaFile looks under sessionDir/media for any file whose stem
