@@ -1,0 +1,30 @@
+---
+import { useTranslations, localizedPath } from '../i18n/utils';
+import type { Lang } from '../i18n/ui';
+import LangSwitcher from './LangSwitcher.astro';
+
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = useTranslations(lang);
+const home = localizedPath(lang, '/');
+---
+
+<header class="sticky top-0 z-40 backdrop-blur-xl bg-ink/70 border-b border-white/5">
+  <div class="mx-auto max-w-6xl px-6 h-16 flex items-center justify-between">
+    <a href={home} class="flex items-center gap-2 group">
+      <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-wa-green to-wa-green-dark text-ink font-black text-lg shadow-lg shadow-wa-green/20">
+        M
+      </span>
+      <span class="font-semibold tracking-tight text-white group-hover:text-wa-green transition">MultiverseWP</span>
+    </a>
+
+    <nav class="hidden md:flex items-center gap-6 text-sm text-white/70">
+      <a href="#features" class="hover:text-white transition">{t('nav.features')}</a>
+      <a href="#mcp" class="hover:text-white transition">{t('nav.mcp')}</a>
+      <a href="#download" class="hover:text-white transition">{t('nav.download')}</a>
+      <a href="https://github.com/unkownpr/multiversewp" target="_blank" rel="noopener" class="hover:text-white transition">{t('nav.github')}</a>
+    </nav>
+
+    <LangSwitcher lang={lang} />
+  </div>
+</header>

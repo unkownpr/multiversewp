@@ -1,0 +1,14 @@
+---
+import { useTranslations } from '../i18n/utils';
+import type { Lang } from '../i18n/ui';
+
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = useTranslations(lang);
+---
+
+<footer class="border-t border-white/5 py-10 text-center text-xs text-white/40 space-y-3">
+  <p class="mx-auto max-w-2xl px-6 leading-relaxed">{t('footer.legal')}</p>
+  <p>{t('footer.privacy')}</p>
+  <p class="text-white/30">{t('footer.made')}</p>
+</footer>

@@ -1,0 +1,68 @@
+---
+import { useTranslations } from '../i18n/utils';
+import type { Lang, Key } from '../i18n/ui';
+
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = useTranslations(lang);
+
+const tools: Array<{ name: string; tKey: Key }> = [
+  { name: 'list_accounts', tKey: 'mcp.tool.list_accounts' },
+  { name: 'list_chats', tKey: 'mcp.tool.list_chats' },
+  { name: 'get_messages', tKey: 'mcp.tool.get_messages' },
+  { name: 'search_messages', tKey: 'mcp.tool.search_messages' },
+  { name: 'send_message', tKey: 'mcp.tool.send_message' },
+  { name: 'download_media', tKey: 'mcp.tool.download_media' },
+  { name: 'list_group_members', tKey: 'mcp.tool.list_group_members' },
+  { name: 'create_group', tKey: 'mcp.tool.create_group' },
+  { name: 'check_phone', tKey: 'mcp.tool.check_phone' },
+  { name: 'list_contacts', tKey: 'mcp.tool.list_contacts' },
+];
+
+const snippet = `{
+  "mcpServers": {
+    "multiversewp": {
+      "command": "/Applications/MultiverseWP.app/Contents/MacOS/MultiverseWP",
+      "args": ["--mcp"]
+    }
+  }
+}`;
+---
+
+<section id="mcp" class="relative py-24 sm:py-32 border-t border-white/5">
+  <div class="absolute inset-x-0 -top-20 h-40 bg-gradient-to-b from-wa-green/5 to-transparent pointer-events-none"></div>
+
+  <div class="mx-auto max-w-6xl px-6">
+    <div class="grid lg:grid-cols-2 gap-12 items-start">
+      <div>
+        <span class="text-xs uppercase tracking-widest text-wa-green font-semibold">MCP</span>
+        <h2 class="mt-3 text-3xl sm:text-4xl font-bold tracking-tight text-white text-balance">{t('mcp.heading')}</h2>
+        <p class="mt-4 text-white/60 leading-relaxed">{t('mcp.sub')}</p>
+
+        <div class="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {tools.map((tool) => (
+            <div class="flex items-center gap-3 rounded-lg border border-white/5 bg-white/5 px-3 py-2.5">
+              <code class="text-xs text-wa-green font-mono">{tool.name}</code>
+              <span class="ml-auto text-[11px] text-white/50">{t(tool.tKey)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div class="space-y-4 lg:sticky lg:top-24">
+        <div class="rounded-xl border border-white/10 bg-ink overflow-hidden shadow-2xl">
+          <div class="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-white/5">
+            <span class="text-[10px] uppercase tracking-widest text-white/40 font-mono">claude_desktop_config.json</span>
+            <span class="text-[10px] text-wa-green">● connected</span>
+          </div>
+          <pre class="p-4 text-xs leading-relaxed font-mono text-white/80 overflow-x-auto"><code>{snippet}</code></pre>
+        </div>
+
+        <div class="bubble border border-wa-green/20">
+          <h3 class="text-white font-semibold tracking-tight">{t('mcp.install.heading')}</h3>
+          <p class="mt-2 text-sm text-white/60 leading-relaxed">{t('mcp.install.sub')}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

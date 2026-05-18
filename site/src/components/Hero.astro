@@ -1,0 +1,85 @@
+---
+import { useTranslations } from '../i18n/utils';
+import type { Lang } from '../i18n/ui';
+
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = useTranslations(lang);
+---
+
+<section class="relative overflow-hidden">
+  <div class="absolute inset-0 glow opacity-60 pointer-events-none"></div>
+  <div class="absolute -top-32 left-1/2 -translate-x-1/2 h-96 w-[60rem] bg-wa-green/10 blur-[120px] rounded-full pointer-events-none"></div>
+
+  <div class="relative mx-auto max-w-6xl px-6 pt-20 pb-24 sm:pt-28 sm:pb-32 text-center">
+    <span class="inline-flex items-center gap-2 rounded-full border border-wa-green/30 bg-wa-green/10 px-3 py-1 text-xs font-medium text-wa-green tracking-wide uppercase">
+      <span class="h-1.5 w-1.5 rounded-full bg-wa-green animate-pulse"></span>
+      {t('hero.tag')}
+    </span>
+
+    <h1 class="mt-8 text-balance text-5xl sm:text-6xl md:text-7xl font-bold tracking-tight text-white">
+      {t('hero.title')}
+    </h1>
+
+    <p class="mx-auto mt-6 max-w-2xl text-balance text-lg text-white/70 leading-relaxed">
+      {t('hero.subtitle')}
+    </p>
+
+    <div class="mt-10 flex flex-wrap items-center justify-center gap-3">
+      <a
+        href="https://github.com/unkownpr/multiversewp/releases/latest"
+        class="inline-flex items-center gap-2 rounded-xl bg-wa-green px-6 py-3 text-base font-semibold text-ink hover:bg-wa-green/90 transition shadow-lg shadow-wa-green/30"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+        {t('hero.cta.download')}
+      </a>
+      <a
+        href="https://github.com/unkownpr/multiversewp"
+        target="_blank"
+        rel="noopener"
+        class="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-6 py-3 text-base font-semibold text-white hover:bg-white/10 transition"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1.1-.8.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.9 2.9 1.3 3.6 1 .1-.8.4-1.3.8-1.6-2.6-.3-5.4-1.3-5.4-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.4 11.4 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg>
+        {t('hero.cta.github')}
+      </a>
+    </div>
+
+    <p class="mt-6 text-xs text-white/40 tracking-wide">{t('hero.note')}</p>
+
+    <div class="mt-16 mx-auto max-w-4xl">
+      <div class="rounded-2xl border border-white/10 bg-gradient-to-b from-ink-soft/80 to-ink-soft/20 p-2 shadow-2xl shadow-black/50">
+        <div class="rounded-xl bg-ink p-1 ring-1 ring-white/10">
+          <div class="flex items-center gap-1.5 px-3 py-2 border-b border-white/5">
+            <span class="h-3 w-3 rounded-full bg-red-500/80"></span>
+            <span class="h-3 w-3 rounded-full bg-yellow-500/80"></span>
+            <span class="h-3 w-3 rounded-full bg-green-500/80"></span>
+            <span class="ml-3 text-xs text-white/40 font-mono">MultiverseWP</span>
+          </div>
+          <div class="grid grid-cols-12 gap-0 h-80 text-xs">
+            <aside class="col-span-3 border-r border-white/5 p-3 space-y-2 text-white/60">
+              <div class="text-[10px] uppercase tracking-wider text-white/30">Accounts</div>
+              <div class="flex items-center gap-2 rounded-md bg-wa-green/15 px-2 py-1.5 text-wa-green"><span class="h-1.5 w-1.5 rounded-full bg-wa-green"></span>Personal</div>
+              <div class="flex items-center gap-2 px-2 py-1.5"><span class="h-1.5 w-1.5 rounded-full bg-wa-green"></span>Work</div>
+              <div class="flex items-center gap-2 px-2 py-1.5"><span class="h-1.5 w-1.5 rounded-full bg-white/30"></span>Side project</div>
+            </aside>
+            <div class="col-span-4 border-r border-white/5 p-3 space-y-2">
+              <div class="flex items-center justify-between"><span class="font-medium text-white">Ayşe</span><span class="text-[10px] text-white/30">14:32</span></div>
+              <div class="text-white/50 truncate text-[11px]">tamam görüşürüz akşam</div>
+              <div class="border-t border-white/5 pt-2 flex items-center justify-between"><span class="font-medium text-white">Team Standup</span><span class="text-[10px] text-wa-green">●</span></div>
+              <div class="text-white/50 truncate text-[11px]">Claude: searched 3 chats, found...</div>
+            </div>
+            <div class="col-span-5 p-3 flex flex-col gap-2">
+              <div class="self-start max-w-[80%] bubble !p-2 !rounded-lg text-white/90 text-[11px]">Yarın 10'da buluşalım mı?</div>
+              <div class="self-end max-w-[80%] rounded-lg bg-wa-green/90 text-ink p-2 text-[11px]">Olur, kafede.</div>
+              <div class="self-start max-w-[80%] bubble !p-2 !rounded-lg text-white/90 text-[11px]">👍</div>
+              <div class="mt-auto flex items-center gap-2 border-t border-white/5 pt-2">
+                <div class="flex-1 rounded-full bg-white/5 px-3 py-1.5 text-white/30 text-[11px]">Mesaj yaz…</div>
+                <span class="h-7 w-7 rounded-full bg-wa-green inline-flex items-center justify-center text-ink">→</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

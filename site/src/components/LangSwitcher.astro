@@ -1,0 +1,20 @@
+---
+import { languages, type Lang } from '../i18n/ui';
+
+interface Props {
+  lang: Lang;
+}
+
+const { lang } = Astro.props;
+const altLang: Lang = lang === 'tr' ? 'en' : 'tr';
+const altHref = altLang === 'tr' ? '/' : `/${altLang}/`;
+---
+
+<a
+  href={altHref}
+  class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-white/80 hover:border-wa-green/60 hover:text-white transition"
+  aria-label={`Switch to ${languages[altLang]}`}
+>
+  <span aria-hidden="true">🌐</span>
+  <span>{languages[altLang]}</span>
+</a>

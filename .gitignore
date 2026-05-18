@@ -56,3 +56,8 @@ fastlane/Preview.html
 *.dmg
 *.pkg
 release/
+
+## Site (Astro)
+site/node_modules/
+site/dist/
+site/.astro/

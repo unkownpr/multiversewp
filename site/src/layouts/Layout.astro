@@ -1,0 +1,64 @@
+---
+import '../styles/global.css';
+import type { Lang } from '../i18n/ui';
+import { useTranslations } from '../i18n/utils';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+
+interface Props {
+  lang: Lang;
+  title?: string;
+  description?: string;
+}
+
+const { lang } = Astro.props;
+const t = useTranslations(lang);
+
+const title = Astro.props.title ?? (lang === 'tr'
+  ? 'MultiverseWP — Tek pencerede tüm WhatsApp hesapların'
+  : 'MultiverseWP — Every WhatsApp account in one window');
+
+const description = Astro.props.description ?? t('hero.subtitle');
+const canonical = new URL(Astro.url.pathname, Astro.site).toString();
+const ogImage = new URL('/og.png', Astro.site).toString();
+const altLang: Lang = lang === 'tr' ? 'en' : 'tr';
+const altHref = altLang === 'tr' ? new URL('/', Astro.site).toString() : new URL(`/${altLang}/`, Astro.site).toString();
+---
+
+<!doctype html>
+<html lang={lang} class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <meta name="theme-color" content="#0B141A" />
+
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="alternate" hreflang={altLang} href={altHref} />
+    <link rel="alternate" hreflang="x-default" href={new URL('/', Astro.site).toString()} />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:locale" content={lang === 'tr' ? 'tr_TR' : 'en_US'} />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://github.com" crossorigin />
+  </head>
+  <body class="bg-ink text-white antialiased">
+    <Header lang={lang} />
+    <main>
+      <slot />
+    </main>
+    <Footer lang={lang} />
+  </body>
+</html>
