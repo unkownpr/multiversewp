@@ -2,9 +2,32 @@
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
     <channel>
         <title>MultiverseWP</title>
-        <link>https://semihsilistre.github.io/multiversewp/appcast.xml</link>
+        <link>https://unkownpr.github.io/multiversewp/appcast.xml</link>
         <description>Auto-update feed for MultiverseWP.</description>
         <language>en</language>
-        <!-- First signed release will fill in this item via scripts/release.sh -->
+        <item>
+            <title>Version 0.1.13</title>
+            <pubDate>Mon, 18 May 2026 07:06:46 +0000</pubDate>
+            <sparkle:version>0.1.13</sparkle:version>
+            <sparkle:shortVersionString>0.1.13</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[chore: point Sparkle feed + release URLs at the real GitHub user
+
+The Sparkle agent baked the placeholder `semihsilistre.github.io`
+domain into project.yml / Info.plist / release.sh / docs / README.
+The real repo lives at https://github.com/unkownpr/multiversewp and
+GitHub Pages is enabled on gh-pages → https://unkownpr.github.io/
+multiversewp. Swap every reference accordingly.
+
+SUFeedURL inside Info.plist matters most: without this fix, Sparkle
+would hit a 404 every Check-for-Updates and report "feed unreachable".]]></description>
+            <enclosure
+                url="https://github.com/unkownpr/multiversewp/releases/download/v0.1.13/MultiverseWP-0.1.13.dmg"
+                sparkle:version="0.1.13"
+                sparkle:shortVersionString="0.1.13"
+                length="20013957"
+                type="application/octet-stream"
+                sparkle:edSignature="5Qu90W3h8SbDbYdhfErLVpLThv6M0dkJuFhocmfG28Uv7FVnhV6VQo8wqGcf/9aBuR1NdX72lPn5aksVE9YUAg==" />
+        </item>
     </channel>
 </rss>
