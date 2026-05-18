@@ -130,6 +130,49 @@ final class WAClientProcess: WAClient, @unchecked Sendable {
         try await send(.markRead(chatJID: chatJID))
     }
 
+    func listGroupMembers(chatJID: String) async throws -> [GroupMemberInfo] {
+        let response = try await call(.listGroupMembers(chatJID: chatJID))
+        guard let extra = response.extra,
+              let rawMembers = extra["members"] as? [[String: Any]]
+        else {
+            throw WAClientError.decodingFailed("list_group_members missing members array")
+        }
+        return rawMembers.map { dict in
+            GroupMemberInfo(
+                jid: dict["jid"] as? String ?? "",
+                pushName: dict["push_name"] as? String,
+                phoneNumber: dict["phone_number"] as? String,
+                isAdmin: (dict["is_admin"] as? Bool) ?? false,
+                isSuperAdmin: (dict["is_super_admin"] as? Bool) ?? false
+            )
+        }
+    }
+
+    func createGroup(subject: String, participantJIDs: [String]) async throws -> CreatedGroupInfo {
+        let response = try await call(.createGroup(subject: subject, participantJIDs: participantJIDs))
+        guard let extra = response.extra,
+              let jid = extra["jid"] as? String,
+              let chatID = extra["chat_id"] as? String
+        else {
+            throw WAClientError.decodingFailed("create_group missing chat_id/jid")
+        }
+        return CreatedGroupInfo(chatID: chatID, jid: jid)
+    }
+
+    func checkPhone(_ phoneNumber: String) async throws -> PhoneCheckResult {
+        let response = try await call(.checkPhone(phoneNumber: phoneNumber))
+        guard let extra = response.extra else {
+            throw WAClientError.decodingFailed("check_phone missing payload")
+        }
+        return PhoneCheckResult(
+            phone: extra["phone"] as? String ?? phoneNumber,
+            isOnWhatsApp: (extra["is_on_whatsapp"] as? Bool) ?? false,
+            jid: extra["jid"] as? String,
+            isBusiness: (extra["business"] as? Bool) ?? false,
+            verifiedName: extra["verified_name"] as? String
+        )
+    }
+
     private func ensureSessionDirectory() throws -> URL {
         let fileManager = FileManager.default
         let supportDir = try fileManager.url(

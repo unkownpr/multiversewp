@@ -111,4 +111,55 @@ final class WireProtocolTests: XCTestCase {
         XCTAssertEqual(payload?["mime_type"] as? String, "image/png")
         XCTAssertEqual(payload?["caption"] as? String, "trip")
     }
+
+    func testEncodeListGroupMembers() throws {
+        let envelope = WireEnvelope(
+            id: "lgm-1",
+            command: .listGroupMembers(chatJID: "g@g.us")
+        )
+        let data = try WireEncoder.encode(envelope)
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        XCTAssertEqual(json?["type"] as? String, "list_group_members")
+        let payload = json?["payload"] as? [String: Any]
+        XCTAssertEqual(payload?["chat_jid"] as? String, "g@g.us")
+    }
+
+    func testEncodeCreateGroup() throws {
+        let envelope = WireEnvelope(
+            id: "cg-1",
+            command: .createGroup(subject: "Trip Crew", participantJIDs: ["a@s.whatsapp.net", "b@s.whatsapp.net"])
+        )
+        let data = try WireEncoder.encode(envelope)
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        XCTAssertEqual(json?["type"] as? String, "create_group")
+        let payload = json?["payload"] as? [String: Any]
+        XCTAssertEqual(payload?["subject"] as? String, "Trip Crew")
+        XCTAssertEqual(payload?["participant_jids"] as? [String], ["a@s.whatsapp.net", "b@s.whatsapp.net"])
+    }
+
+    func testEncodeCheckPhone() throws {
+        let envelope = WireEnvelope(
+            id: "cp-1",
+            command: .checkPhone(phoneNumber: "+905551112233")
+        )
+        let data = try WireEncoder.encode(envelope)
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        XCTAssertEqual(json?["type"] as? String, "check_phone")
+        let payload = json?["payload"] as? [String: Any]
+        XCTAssertEqual(payload?["phone_number"] as? String, "+905551112233")
+    }
+
+    func testDecodeResponseExposesExtraPayload() throws {
+        let json = """
+        {"type":"response","id":"req-9","payload":{"ok":true,"members":[{"jid":"a@s.whatsapp.net","is_admin":true}]}}
+        """
+        let result = try WireDecoder.decode(Data(json.utf8))
+        guard case .response(_, let response) = result else {
+            return XCTFail("Expected response, got \(result)")
+        }
+        XCTAssertTrue(response.ok)
+        let members = response.extra?["members"] as? [[String: Any]]
+        XCTAssertEqual(members?.first?["jid"] as? String, "a@s.whatsapp.net")
+        XCTAssertEqual(members?.first?["is_admin"] as? Bool, true)
+    }
 }

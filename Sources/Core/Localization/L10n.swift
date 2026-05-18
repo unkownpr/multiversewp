@@ -67,13 +67,13 @@ public enum L10n {
 
             // MCP tab
             "mcp.title": "Model Context Protocol",
-            "mcp.intro": "MultiverseWP ships a local MCP server so AI assistants — Claude Desktop, Claude Code, Cursor, Continue, and any other MCP-compatible client — can read your WhatsApp history through a strictly read-only stdio bridge. Sending messages will require explicit per-chat approval in a later milestone.",
+            "mcp.intro": "MultiverseWP ships a local MCP server so AI assistants — Claude Desktop, Claude Code, Cursor, Continue, and any other MCP-compatible client — can read your WhatsApp history, send messages, create groups, and resolve media through a single stdio bridge. Personal-use single-tenant: every call is owner-initiated.",
             "mcp.section.status": "Status",
             "mcp.section.installers": "One-click installers",
             "mcp.section.manual": "Manual setup (any other client)",
             "mcp.section.tools": "Available tools",
             "mcp.section.howToUse": "How you'll use it",
-            "mcp.status.available": "Available (read-only, run via --mcp flag)",
+            "mcp.status.available": "Available (read + write, run via --mcp flag)",
             "mcp.executable": "Executable",
             "mcp.install.cta": "Install",
             "mcp.install.success": "registered at",
@@ -177,13 +177,13 @@ public enum L10n {
 
             // MCP tab
             "mcp.title": "Model Context Protocol",
-            "mcp.intro": "MultiverseWP, Claude Desktop, Claude Code, Cursor, Continue ve diğer MCP uyumlu AI istemcilerinin WhatsApp geçmişini salt-okunur bir stdio köprüsünden okuyabilmesi için yerel bir MCP sunucusu çalıştırır. Mesaj göndermek, ileriki bir sürümde sohbet-başına onaylı şekilde gelecek.",
+            "mcp.intro": "MultiverseWP, Claude Desktop, Claude Code, Cursor, Continue ve diğer MCP uyumlu AI istemcilerinin WhatsApp geçmişini okuması, mesaj göndermesi, grup oluşturması ve medya çözmesi için yerel bir MCP sunucusu çalıştırır. Tek-kullanıcılı kişisel kurulum — her çağrı sahibi tarafından başlatılır.",
             "mcp.section.status": "Durum",
             "mcp.section.installers": "Tek tıkla kurulumlar",
             "mcp.section.manual": "Manuel kurulum (diğer istemciler)",
             "mcp.section.tools": "Sunulan araçlar",
             "mcp.section.howToUse": "Nasıl kullanırım",
-            "mcp.status.available": "Hazır (salt-okunur, --mcp bayrağıyla çalışır)",
+            "mcp.status.available": "Hazır (okuma + yazma, --mcp bayrağıyla çalışır)",
             "mcp.executable": "Yürütülebilir yol",
             "mcp.install.cta": "Kur",
             "mcp.install.success": "şuraya yazıldı:",

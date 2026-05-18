@@ -134,6 +134,60 @@ public struct SendMessageRequest: Sendable, Equatable {
     }
 }
 
+public struct GroupMemberInfo: Sendable, Equatable {
+    public let jid: String
+    public let pushName: String?
+    public let phoneNumber: String?
+    public let isAdmin: Bool
+    public let isSuperAdmin: Bool
+
+    public init(
+        jid: String,
+        pushName: String?,
+        phoneNumber: String?,
+        isAdmin: Bool,
+        isSuperAdmin: Bool
+    ) {
+        self.jid = jid
+        self.pushName = pushName
+        self.phoneNumber = phoneNumber
+        self.isAdmin = isAdmin
+        self.isSuperAdmin = isSuperAdmin
+    }
+}
+
+public struct CreatedGroupInfo: Sendable, Equatable {
+    public let chatID: String
+    public let jid: String
+
+    public init(chatID: String, jid: String) {
+        self.chatID = chatID
+        self.jid = jid
+    }
+}
+
+public struct PhoneCheckResult: Sendable, Equatable {
+    public let phone: String
+    public let isOnWhatsApp: Bool
+    public let jid: String?
+    public let isBusiness: Bool
+    public let verifiedName: String?
+
+    public init(
+        phone: String,
+        isOnWhatsApp: Bool,
+        jid: String?,
+        isBusiness: Bool,
+        verifiedName: String?
+    ) {
+        self.phone = phone
+        self.isOnWhatsApp = isOnWhatsApp
+        self.jid = jid
+        self.isBusiness = isBusiness
+        self.verifiedName = verifiedName
+    }
+}
+
 public protocol WAClient: AnyObject, Sendable {
     var accountID: Account.ID { get }
     var events: AsyncStream<WAClientEvent> { get }
@@ -144,6 +198,9 @@ public protocol WAClient: AnyObject, Sendable {
     func fetchHistory(chatJID: String, limit: Int) async throws
     func downloadMedia(messageID: String) async throws -> URL
     func markChatRead(chatJID: String) async throws
+    func listGroupMembers(chatJID: String) async throws -> [GroupMemberInfo]
+    func createGroup(subject: String, participantJIDs: [String]) async throws -> CreatedGroupInfo
+    func checkPhone(_ phoneNumber: String) async throws -> PhoneCheckResult
 }
 
 public struct WAClientFactory: Sendable {

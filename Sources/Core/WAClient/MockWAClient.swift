@@ -18,9 +18,15 @@ public final class MockWAClient: WAClient, @unchecked Sendable {
 
     public private(set) var sentMessages: [SendMessageRequest] = []
     public private(set) var connectCalls = 0
+    public private(set) var listGroupMembersCalls: [String] = []
+    public private(set) var createGroupCalls: [(String, [String])] = []
+    public private(set) var checkPhoneCalls: [String] = []
 
     public var sendMessageReturn: String?
     public var downloadMediaReturn: URL?
+    public var listGroupMembersReturn: [GroupMemberInfo] = []
+    public var createGroupReturn: CreatedGroupInfo?
+    public var checkPhoneReturn: PhoneCheckResult?
 
     public init(accountID: Account.ID = UUID()) {
         self.accountID = accountID
@@ -45,6 +51,27 @@ public final class MockWAClient: WAClient, @unchecked Sendable {
     }
 
     public func markChatRead(chatJID: String) async throws {}
+
+    public func listGroupMembers(chatJID: String) async throws -> [GroupMemberInfo] {
+        listGroupMembersCalls.append(chatJID)
+        return listGroupMembersReturn
+    }
+
+    public func createGroup(subject: String, participantJIDs: [String]) async throws -> CreatedGroupInfo {
+        createGroupCalls.append((subject, participantJIDs))
+        return createGroupReturn ?? CreatedGroupInfo(chatID: "\(UUID().uuidString)@g.us", jid: "\(UUID().uuidString)@g.us")
+    }
+
+    public func checkPhone(_ phoneNumber: String) async throws -> PhoneCheckResult {
+        checkPhoneCalls.append(phoneNumber)
+        return checkPhoneReturn ?? PhoneCheckResult(
+            phone: phoneNumber,
+            isOnWhatsApp: false,
+            jid: nil,
+            isBusiness: false,
+            verifiedName: nil
+        )
+    }
 
     public func emit(_ event: WAClientEvent) {
         subject.send(event)

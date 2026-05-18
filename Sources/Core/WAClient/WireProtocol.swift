@@ -7,6 +7,9 @@ enum WireCommand: Sendable {
     case fetchHistory(chatJID: String, limit: Int)
     case downloadMedia(messageID: String)
     case markRead(chatJID: String)
+    case listGroupMembers(chatJID: String)
+    case createGroup(subject: String, participantJIDs: [String])
+    case checkPhone(phoneNumber: String)
 }
 
 struct WireEnvelope: Sendable {
@@ -14,11 +17,18 @@ struct WireEnvelope: Sendable {
     let command: WireCommand
 }
 
-struct WireResponse: Sendable {
+/// Helper → Swift response. Carries the typed fields the original commands need
+/// (`message_id`, `local_path`) plus a raw `extra` bag that newer commands
+/// (list_group_members, create_group, check_phone) decode themselves. Keeping
+/// `extra` typed as `[String: Any]?` avoids forcing every new helper command to
+/// thread a Swift-side decoder; the call site reaches in once and shapes the
+/// concrete result type it needs.
+struct WireResponse: @unchecked Sendable {
     let messageID: String?
     let localPath: String?
     let ok: Bool
     let errorMessage: String?
+    let extra: [String: Any]?
 }
 
 enum WireMessage: Sendable {
@@ -52,6 +62,15 @@ enum WireEncoder {
         case .markRead(let chatJID):
             dict["type"] = "mark_read"
             dict["payload"] = ["chat_jid": chatJID]
+        case .listGroupMembers(let chatJID):
+            dict["type"] = "list_group_members"
+            dict["payload"] = ["chat_jid": chatJID]
+        case .createGroup(let subject, let participantJIDs):
+            dict["type"] = "create_group"
+            dict["payload"] = ["subject": subject, "participant_jids": participantJIDs]
+        case .checkPhone(let phoneNumber):
+            dict["type"] = "check_phone"
+            dict["payload"] = ["phone_number": phoneNumber]
         }
         return try JSONSerialization.data(withJSONObject: dict, options: [])
     }
@@ -72,7 +91,8 @@ enum WireDecoder {
                 messageID: payload["message_id"] as? String,
                 localPath: payload["local_path"] as? String,
                 ok: (payload["ok"] as? Bool) ?? (json["error"] == nil),
-                errorMessage: json["error"] as? String
+                errorMessage: json["error"] as? String,
+                extra: payload
             )
             return .response(id: id, response)
         }

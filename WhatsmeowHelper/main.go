@@ -329,6 +329,12 @@ func (h *helper) dispatch(cmd command) {
 	case "mark_read":
 		// TODO: call client.MarkRead with the message IDs in the chat.
 		h.replyOK(cmd.ID, nil)
+	case "list_group_members":
+		h.handleListGroupMembers(cmd)
+	case "create_group":
+		h.handleCreateGroup(cmd)
+	case "check_phone":
+		h.handleCheckPhone(cmd)
 	default:
 		h.replyError(cmd.ID, fmt.Sprintf("unknown command: %s", cmd.Type))
 	}
@@ -1178,6 +1184,185 @@ func (h *helper) handleDownloadMedia(cmd command) {
 		"status":     "downloaded",
 		"media_path": path,
 	}})
+}
+
+// handleListGroupMembers resolves a group chat's participants via
+// client.GetGroupInfo. Runs in its own goroutine so the network round-trip
+// never blocks the event-handler goroutine that calls into dispatch from the
+// stdin scanner. The MCP layer uses this to expose group membership without
+// keeping a local mirror.
+func (h *helper) handleListGroupMembers(cmd command) {
+	var payload struct {
+		ChatJID string `json:"chat_jid"`
+	}
+	if err := json.Unmarshal(cmd.Payload, &payload); err != nil {
+		h.replyError(cmd.ID, fmt.Sprintf("invalid payload: %v", err))
+		return
+	}
+	if payload.ChatJID == "" {
+		h.replyError(cmd.ID, "chat_jid is required")
+		return
+	}
+
+	h.clientMu.Lock()
+	client := h.client
+	h.clientMu.Unlock()
+	if client == nil || !client.IsConnected() {
+		h.replyError(cmd.ID, "not connected")
+		return
+	}
+
+	jid, err := types.ParseJID(payload.ChatJID)
+	if err != nil {
+		h.replyError(cmd.ID, fmt.Sprintf("invalid chat_jid: %v", err))
+		return
+	}
+
+	go func() {
+		ctx, cancel := context.WithTimeout(h.rootCtx, 15*time.Second)
+		defer cancel()
+		info, err := client.GetGroupInfo(ctx, jid)
+		if err != nil || info == nil {
+			if err == nil {
+				err = fmt.Errorf("group not found")
+			}
+			h.replyError(cmd.ID, fmt.Sprintf("get_group_info: %v", err))
+			return
+		}
+		members := make([]map[string]interface{}, 0, len(info.Participants))
+		for _, p := range info.Participants {
+			entry := map[string]interface{}{
+				"jid":            p.JID.String(),
+				"is_admin":       p.IsAdmin,
+				"is_super_admin": p.IsSuperAdmin,
+			}
+			if p.PhoneNumber.User != "" {
+				entry["phone_number"] = p.PhoneNumber.User
+			} else if p.JID.User != "" {
+				entry["phone_number"] = p.JID.User
+			}
+			if p.DisplayName != "" {
+				entry["push_name"] = p.DisplayName
+			}
+			members = append(members, entry)
+		}
+		h.replyOK(cmd.ID, map[string]interface{}{"members": members})
+	}()
+}
+
+// handleCreateGroup creates a new WhatsApp group via client.CreateGroup. The
+// participant_jids array is parsed into types.JID values; any malformed entry
+// short-circuits the request before hitting the wire.
+func (h *helper) handleCreateGroup(cmd command) {
+	var payload struct {
+		Subject         string   `json:"subject"`
+		ParticipantJIDs []string `json:"participant_jids"`
+	}
+	if err := json.Unmarshal(cmd.Payload, &payload); err != nil {
+		h.replyError(cmd.ID, fmt.Sprintf("invalid payload: %v", err))
+		return
+	}
+	subject := strings.TrimSpace(payload.Subject)
+	if subject == "" {
+		h.replyError(cmd.ID, "subject is required")
+		return
+	}
+	if len(payload.ParticipantJIDs) == 0 {
+		h.replyError(cmd.ID, "at least one participant is required")
+		return
+	}
+
+	parsed := make([]types.JID, 0, len(payload.ParticipantJIDs))
+	for _, raw := range payload.ParticipantJIDs {
+		jid, err := types.ParseJID(raw)
+		if err != nil {
+			h.replyError(cmd.ID, fmt.Sprintf("invalid participant jid %q: %v", raw, err))
+			return
+		}
+		parsed = append(parsed, jid)
+	}
+
+	h.clientMu.Lock()
+	client := h.client
+	h.clientMu.Unlock()
+	if client == nil || !client.IsConnected() {
+		h.replyError(cmd.ID, "not connected")
+		return
+	}
+
+	go func() {
+		ctx, cancel := context.WithTimeout(h.rootCtx, 30*time.Second)
+		defer cancel()
+		info, err := client.CreateGroup(ctx, whatsmeow.ReqCreateGroup{
+			Name:         subject,
+			Participants: parsed,
+		})
+		if err != nil {
+			h.replyError(cmd.ID, fmt.Sprintf("create_group: %v", err))
+			return
+		}
+		jidStr := info.JID.String()
+		h.replyOK(cmd.ID, map[string]interface{}{
+			"chat_id": jidStr,
+			"jid":     jidStr,
+		})
+	}()
+}
+
+// handleCheckPhone resolves whether a phone number is on WhatsApp via
+// client.IsOnWhatsApp. Accepts E.164 (`+90555…`) or bare digits — the underlying
+// call handles either form.
+func (h *helper) handleCheckPhone(cmd command) {
+	var payload struct {
+		PhoneNumber string `json:"phone_number"`
+	}
+	if err := json.Unmarshal(cmd.Payload, &payload); err != nil {
+		h.replyError(cmd.ID, fmt.Sprintf("invalid payload: %v", err))
+		return
+	}
+	phone := strings.TrimSpace(payload.PhoneNumber)
+	if phone == "" {
+		h.replyError(cmd.ID, "phone_number is required")
+		return
+	}
+
+	h.clientMu.Lock()
+	client := h.client
+	h.clientMu.Unlock()
+	if client == nil || !client.IsConnected() {
+		h.replyError(cmd.ID, "not connected")
+		return
+	}
+
+	go func() {
+		ctx, cancel := context.WithTimeout(h.rootCtx, 15*time.Second)
+		defer cancel()
+		results, err := client.IsOnWhatsApp(ctx, []string{phone})
+		if err != nil {
+			h.replyError(cmd.ID, fmt.Sprintf("is_on_whatsapp: %v", err))
+			return
+		}
+		out := map[string]interface{}{
+			"phone":          phone,
+			"is_on_whatsapp": false,
+		}
+		if len(results) > 0 {
+			r := results[0]
+			out["is_on_whatsapp"] = r.IsIn
+			if r.IsIn {
+				out["jid"] = r.JID.String()
+			}
+			if r.VerifiedName != nil {
+				out["business"] = true
+				if r.VerifiedName.Details != nil {
+					if name := r.VerifiedName.Details.GetVerifiedName(); name != "" {
+						out["verified_name"] = name
+					}
+				}
+			}
+		}
+		h.replyOK(cmd.ID, out)
+	}()
 }
 
 // findExistingMediaFile looks under sessionDir/media for any file whose stem

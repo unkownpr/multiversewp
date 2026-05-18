@@ -35,11 +35,17 @@ public final class MCPServer: @unchecked Sendable {
         case storageUnavailable(String)
     }
 
+    /// Async-throwing factory the write-tool handlers use to obtain a connected
+    /// `WAClient` for a given account UUID. Lazily invoked the first time a
+    /// write tool fires; the MCP process owns the helper child it spawns.
+    public typealias WAClientProvider = @Sendable (Account.ID) async throws -> WAClient
+
     private let options: Options
     private let storage: MCPReadOnlyStorage
     private let stdin: FileHandle
     private let stdout: FileHandle
     private let stderr: FileHandle
+    private let clientProvider: WAClientProvider?
     private let log = Logger(subsystem: "com.semihsilistre.multiversewp", category: "MCPServer")
 
     public init(
@@ -47,23 +53,36 @@ public final class MCPServer: @unchecked Sendable {
         storage: MCPReadOnlyStorage,
         stdin: FileHandle = .standardInput,
         stdout: FileHandle = .standardOutput,
-        stderr: FileHandle = .standardError
+        stderr: FileHandle = .standardError,
+        clientProvider: WAClientProvider? = nil
     ) {
         self.options = options
         self.storage = storage
         self.stdin = stdin
         self.stdout = stdout
         self.stderr = stderr
+        self.clientProvider = clientProvider
     }
 
     /// Convenience constructor that opens the production SQLite file at
     /// `~/Library/Application Support/MultiverseWP/multiverse.sqlite` in
-    /// read-only mode.
+    /// read-only mode and prepares an on-demand `WAClient` factory backed by
+    /// the same helper binary the GUI uses. Write tools dispatch through this
+    /// factory; read tools only ever touch the SQLite mirror.
     public static func makeProductionServer(
         options: Options = Options()
     ) throws -> MCPServer {
         let storage = try MCPReadOnlyStorage.makeDefault()
-        return MCPServer(options: options, storage: storage)
+        let factory = WAClientFactory()
+        let keychain = KeychainStore(service: KeychainStore.defaultService)
+        let provider = MCPWAClientPool(factory: factory, keychain: keychain)
+        return MCPServer(
+            options: options,
+            storage: storage,
+            clientProvider: { accountID in
+                try await provider.client(for: accountID)
+            }
+        )
     }
 
     /// Block the current thread, processing JSON-RPC frames from stdin until
@@ -141,8 +160,10 @@ public final class MCPServer: @unchecked Sendable {
                 "version": .string(options.serverVersion)
             ]),
             "instructions": .string(
-                "Read-only access to the local MultiverseWP WhatsApp store. Sending messages "
-                + "requires explicit user approval in the app — coming in a later milestone."
+                "Local MultiverseWP bridge. Read tools serve the SQLite mirror; "
+                + "write tools (send_message, create_group, download_media_now) dispatch "
+                + "through the whatsmeow helper. Personal-use single-tenant setup — every "
+                + "call is owner-initiated."
             )
         ]
     }
@@ -151,7 +172,16 @@ public final class MCPServer: @unchecked Sendable {
 
     private func toolsListResult() -> [String: JSONValue] {
         let descriptors: [MCPToolDescriptor] = [
-            .listAccounts, .listChats, .getMessages, .searchMessages, .downloadMediaNow
+            .listAccounts,
+            .listChats,
+            .getMessages,
+            .getMessagesWithContact,
+            .searchMessages,
+            .downloadMediaNow,
+            .sendMessage,
+            .listGroupMembers,
+            .createGroup,
+            .checkPhone
         ]
         return [
             "tools": .array(descriptors.map { $0.toolEntry })
@@ -178,10 +208,20 @@ public final class MCPServer: @unchecked Sendable {
             payload = try await runListChats(args: argsDict)
         case MCPToolDescriptor.getMessages.name:
             payload = try await runGetMessages(args: argsDict)
+        case MCPToolDescriptor.getMessagesWithContact.name:
+            payload = try await runGetMessagesWithContact(args: argsDict)
         case MCPToolDescriptor.searchMessages.name:
             payload = try await runSearchMessages(args: argsDict)
         case MCPToolDescriptor.downloadMediaNow.name:
             payload = try await runDownloadMediaNow(args: argsDict)
+        case MCPToolDescriptor.sendMessage.name:
+            payload = try await runSendMessage(args: argsDict)
+        case MCPToolDescriptor.listGroupMembers.name:
+            payload = try await runListGroupMembers(args: argsDict)
+        case MCPToolDescriptor.createGroup.name:
+            payload = try await runCreateGroup(args: argsDict)
+        case MCPToolDescriptor.checkPhone.name:
+            payload = try await runCheckPhone(args: argsDict)
         default:
             throw MCPError(code: -32602, message: "Unknown tool: \(toolName)")
         }
@@ -284,23 +324,169 @@ public final class MCPServer: @unchecked Sendable {
         ])
     }
 
-    /// Read-only equivalent of the helper's `download_media` command. Returns
-    /// the existing on-disk path if the media row already has one; otherwise
-    /// signals to the caller that they need to use the in-app affordance to
-    /// trigger a fresh decryption — the MCP layer intentionally never spawns
-    /// a write path of its own.
+    /// Materialises a media message's bytes on disk. Returns the cached path
+    /// when the SQLite mirror already has one (the helper auto-downloaded the
+    /// payload on receipt). Otherwise spins up the on-demand `download_media`
+    /// helper command via `WAClient.downloadMedia(messageID:)` and returns the
+    /// freshly written path. `account_id` is required when no cached row
+    /// exists so the server knows which helper to dispatch to.
     func runDownloadMediaNow(args: [String: JSONValue]) async throws -> JSONValue {
         guard let messageID = try optionalString(args["message_id"], field: "message_id"),
               !messageID.isEmpty
         else {
             throw MCPError(code: -32602, message: "Missing required parameter: message_id")
         }
-        let item = try await storage.media(id: messageID)
+        if let item = try await storage.media(id: messageID),
+           let path = item.localPath,
+           FileManager.default.fileExists(atPath: path) {
+            return .object([
+                "message_id": .string(messageID),
+                "media_path": .string(path),
+                "download_status": .string(item.downloadStatus.rawValue)
+            ])
+        }
+        let accountID = try requiredUUID(args["account_id"], field: "account_id")
+        let client = try await resolveClient(for: accountID)
+        let url = try await client.downloadMedia(messageID: messageID)
         return .object([
             "message_id": .string(messageID),
-            "media_path": jsonNullable(item?.localPath),
-            "download_status": .string(item?.downloadStatus.rawValue ?? "unknown")
+            "media_path": .string(url.path),
+            "download_status": .string(MediaItem.DownloadStatus.completed.rawValue)
         ])
+    }
+
+    // MARK: - Write tool implementations
+
+    /// Dispatches `WAClient.sendMessage` for the matching account and surfaces
+    /// the helper's `message_id`. Personal-use only: there is no second-level
+    /// confirmation prompt — the operator authored the MCP invocation.
+    func runSendMessage(args: [String: JSONValue]) async throws -> JSONValue {
+        let accountID = try requiredUUID(args["account_id"], field: "account_id")
+        guard let chatJID = try optionalString(args["chat_jid"], field: "chat_jid"),
+              !chatJID.isEmpty
+        else {
+            throw MCPError(code: -32602, message: "Missing required parameter: chat_jid")
+        }
+        guard let text = try optionalString(args["text"], field: "text"), !text.isEmpty else {
+            throw MCPError(code: -32602, message: "Missing required parameter: text")
+        }
+        let quoted = try optionalString(args["quoted_message_id"], field: "quoted_message_id")
+
+        let client = try await resolveClient(for: accountID)
+        let request = SendMessageRequest(
+            chatJID: chatJID,
+            text: text,
+            mediaPath: nil,
+            mediaMimeType: nil,
+            caption: nil,
+            quotedMessageID: quoted
+        )
+        let messageID = try await client.sendMessage(request)
+        return .object(["message_id": .string(messageID)])
+    }
+
+    func runListGroupMembers(args: [String: JSONValue]) async throws -> JSONValue {
+        let accountID = try requiredUUID(args["account_id"], field: "account_id")
+        guard let chatID = try optionalString(args["chat_id"], field: "chat_id"),
+              !chatID.isEmpty
+        else {
+            throw MCPError(code: -32602, message: "Missing required parameter: chat_id")
+        }
+        let client = try await resolveClient(for: accountID)
+        let members = try await client.listGroupMembers(chatJID: chatID)
+        let array: [JSONValue] = members.map { member in
+            .object([
+                "jid": .string(member.jid),
+                "push_name": jsonNullable(member.pushName),
+                "phone_number": jsonNullable(member.phoneNumber),
+                "is_admin": .bool(member.isAdmin),
+                "is_super_admin": .bool(member.isSuperAdmin)
+            ])
+        }
+        return .object(["members": .array(array)])
+    }
+
+    func runCreateGroup(args: [String: JSONValue]) async throws -> JSONValue {
+        let accountID = try requiredUUID(args["account_id"], field: "account_id")
+        guard let subject = try optionalString(args["subject"], field: "subject"),
+              !subject.isEmpty
+        else {
+            throw MCPError(code: -32602, message: "Missing required parameter: subject")
+        }
+        let participantsJSON = args["participant_jids"]
+        guard case .array(let rawArray)? = participantsJSON else {
+            throw MCPError(code: -32602, message: "participant_jids must be an array of strings")
+        }
+        var participants: [String] = []
+        for value in rawArray {
+            guard case .string(let s) = value, !s.isEmpty else {
+                throw MCPError(code: -32602, message: "participant_jids must be non-empty strings")
+            }
+            participants.append(s)
+        }
+        guard !participants.isEmpty else {
+            throw MCPError(code: -32602, message: "participant_jids must contain at least one entry")
+        }
+
+        let client = try await resolveClient(for: accountID)
+        let created = try await client.createGroup(subject: subject, participantJIDs: participants)
+        return .object([
+            "chat_id": .string(created.chatID),
+            "jid": .string(created.jid)
+        ])
+    }
+
+    func runCheckPhone(args: [String: JSONValue]) async throws -> JSONValue {
+        let accountID = try requiredUUID(args["account_id"], field: "account_id")
+        guard let phone = try optionalString(args["phone_number"], field: "phone_number"),
+              !phone.isEmpty
+        else {
+            throw MCPError(code: -32602, message: "Missing required parameter: phone_number")
+        }
+        let client = try await resolveClient(for: accountID)
+        let result = try await client.checkPhone(phone)
+        return .object([
+            "phone": .string(result.phone),
+            "is_on_whatsapp": .bool(result.isOnWhatsApp),
+            "jid": jsonNullable(result.jid),
+            "business": .bool(result.isBusiness),
+            "verified_name": jsonNullable(result.verifiedName)
+        ])
+    }
+
+    func runGetMessagesWithContact(args: [String: JSONValue]) async throws -> JSONValue {
+        let accountID = try requiredUUID(args["account_id"], field: "account_id")
+        guard let contactJID = try optionalString(args["contact_jid"], field: "contact_jid"),
+              !contactJID.isEmpty
+        else {
+            throw MCPError(code: -32602, message: "Missing required parameter: contact_jid")
+        }
+        let before = try optionalDate(args["before"], field: "before")
+        let limit = try clampedInt(args["limit"], field: "limit", default: 50, min: 1, max: 200)
+        let messages = try await storage.messagesForContact(
+            accountID: accountID,
+            contactJID: contactJID,
+            before: before,
+            limit: limit
+        )
+        return try await annotated(messages: messages)
+    }
+
+    private func resolveClient(for accountID: Account.ID) async throws -> WAClient {
+        guard let clientProvider else {
+            throw MCPError(
+                code: -32601,
+                message: "Write tools are unavailable in this MCP context (no WAClient provider)"
+            )
+        }
+        return try await clientProvider(accountID)
+    }
+
+    private func requiredUUID(_ value: JSONValue?, field: String) throws -> UUID {
+        guard let uuid = try optionalUUID(value, field: field) else {
+            throw MCPError(code: -32602, message: "Missing required parameter: \(field)")
+        }
+        return uuid
     }
 
     // MARK: - Parameter parsing helpers
@@ -520,6 +706,41 @@ public final class MCPReadOnlyStorage: @unchecked Sendable {
         }
     }
 
+    /// Every message the operator and `contactJID` share, across every chat in
+    /// the account — covers both the 1:1 thread (`chat_id = contactJID`) and
+    /// the contact's contributions to group chats (`sender_jid = contactJID`).
+    /// Demo accounts stay filtered out via the same `account.is_demo = 0` join
+    /// the other reads use.
+    func messagesForContact(
+        accountID: UUID,
+        contactJID: String,
+        before: Date?,
+        limit: Int
+    ) async throws -> [Message] {
+        try await dbPool.read { db in
+            var sql = """
+                SELECT m.* FROM message m
+                JOIN account a ON a.id = m.account_id
+                WHERE m.account_id = ?
+                AND m.is_deleted = 0
+                AND a.is_demo = 0
+                AND (m.sender_jid = ? OR m.chat_id = ?)
+                """
+            var arguments: [(any DatabaseValueConvertible)?] = [
+                accountID.uuidString,
+                contactJID,
+                contactJID
+            ]
+            if let before {
+                sql += " AND m.timestamp < ?"
+                arguments.append(before)
+            }
+            sql += " ORDER BY m.timestamp DESC LIMIT ?"
+            arguments.append(limit)
+            return try Row.fetchAll(db, sql: sql, arguments: StatementArguments(arguments)).map(Self.message(from:))
+        }
+    }
+
     /// Single-row media lookup. Mirrors `MediaRepository.media(id:)` but stays
     /// inside the read-only facade so the MCP tools cannot accidentally fall
     /// back to the writer pool.
@@ -597,6 +818,36 @@ public final class MCPReadOnlyStorage: @unchecked Sendable {
             isStarred: row["is_starred"],
             isDeleted: row["is_deleted"]
         )
+    }
+}
+
+// MARK: - WAClient pool for the --mcp process
+
+/// Thread-safe lazy cache of `WAClient` instances spawned by the MCP child
+/// process. The first write-tool call for an account boots its helper and
+/// blocks until `connect()` resolves; subsequent calls reuse the same client.
+/// The pool is intentionally separate from the GUI's `AppEnvironment` clients
+/// — the `--mcp` invocation is a different process and has no access to the
+/// running app's in-memory state. The downside is that two processes may
+/// briefly contend on the helper's SQLite session DB; for personal use that
+/// trade-off is accepted (the operator is the only invoker).
+final actor MCPWAClientPool {
+
+    private let factory: WAClientFactory
+    private let keychain: KeychainStore
+    private var clients: [Account.ID: WAClient] = [:]
+
+    init(factory: WAClientFactory, keychain: KeychainStore) {
+        self.factory = factory
+        self.keychain = keychain
+    }
+
+    func client(for accountID: Account.ID) async throws -> WAClient {
+        if let existing = clients[accountID] { return existing }
+        let client = factory.makeClient(accountID: accountID, keychain: keychain)
+        try await client.connect()
+        clients[accountID] = client
+        return client
     }
 }
 
@@ -684,14 +935,18 @@ struct MCPToolDescriptor {
 
     static let downloadMediaNow = MCPToolDescriptor(
         name: "download_media_now",
-        title: "Resolve the on-disk path of a media message",
-        description: "Returns the local filesystem path for a previously-downloaded media message (image / video / audio / document). Read-only — does NOT trigger a fresh decryption. If the bytes are not yet on disk, the response contains a null media_path and download_status='pending', and the caller should ask the user to tap Download in the app.",
+        title: "Download / resolve a media message",
+        description: "Returns the local filesystem path for a media message (image / video / audio / document). If the bytes are already cached on disk the cached path is returned immediately; otherwise the whatsmeow helper for the supplied account_id is invoked to decrypt and persist the payload, then the freshly-written path is returned.",
         inputSchema: .object([
             "type": .string("object"),
             "properties": .object([
                 "message_id": .object([
                     "type": .string("string"),
                     "description": .string("Message identifier whose media payload to resolve.")
+                ]),
+                "account_id": .object([
+                    "type": .string("string"),
+                    "description": .string("Account UUID owning the message — required when the bytes are not yet cached so the helper knows which session to dispatch through.")
                 ])
             ]),
             "required": .array([.string("message_id")]),
@@ -699,10 +954,139 @@ struct MCPToolDescriptor {
         ])
     )
 
+    static let sendMessage = MCPToolDescriptor(
+        name: "send_message",
+        title: "Send a WhatsApp text message",
+        description: "Sends a text message from `account_id` to `chat_jid`. Optionally quotes an existing message via `quoted_message_id`. Returns the WhatsApp-assigned `message_id`. Personal-use single-tenant: every invocation is owner-authored.",
+        inputSchema: .object([
+            "type": .string("object"),
+            "properties": .object([
+                "account_id": .object([
+                    "type": .string("string"),
+                    "description": .string("UUID of the WhatsApp account to send from.")
+                ]),
+                "chat_jid": .object([
+                    "type": .string("string"),
+                    "description": .string("Recipient JID — either a personal JID (`...@s.whatsapp.net`) or a group JID (`...@g.us`).")
+                ]),
+                "text": .object([
+                    "type": .string("string"),
+                    "description": .string("Plain-text body to send.")
+                ]),
+                "quoted_message_id": .object([
+                    "type": .string("string"),
+                    "description": .string("Optional ID of the message to quote / reply to.")
+                ])
+            ]),
+            "required": .array([.string("account_id"), .string("chat_jid"), .string("text")]),
+            "additionalProperties": .bool(false)
+        ])
+    )
+
+    static let listGroupMembers = MCPToolDescriptor(
+        name: "list_group_members",
+        title: "List members of a WhatsApp group",
+        description: "Returns every participant of a group chat with their JID, push name, phone number, and admin / super-admin flags. Dispatches through `client.GetGroupInfo` on the matching account's helper.",
+        inputSchema: .object([
+            "type": .string("object"),
+            "properties": .object([
+                "account_id": .object([
+                    "type": .string("string"),
+                    "description": .string("UUID of the WhatsApp account that participates in the group.")
+                ]),
+                "chat_id": .object([
+                    "type": .string("string"),
+                    "description": .string("Group chat JID (`...@g.us`).")
+                ])
+            ]),
+            "required": .array([.string("account_id"), .string("chat_id")]),
+            "additionalProperties": .bool(false)
+        ])
+    )
+
+    static let createGroup = MCPToolDescriptor(
+        name: "create_group",
+        title: "Create a new WhatsApp group",
+        description: "Creates a new group chat with the given subject and participants. Returns the resulting `chat_id` / group JID. Participant JIDs are passed in canonical `digits@s.whatsapp.net` form.",
+        inputSchema: .object([
+            "type": .string("object"),
+            "properties": .object([
+                "account_id": .object([
+                    "type": .string("string"),
+                    "description": .string("UUID of the WhatsApp account that will own the new group.")
+                ]),
+                "subject": .object([
+                    "type": .string("string"),
+                    "description": .string("Group title (WhatsApp limits subjects to 25 characters).")
+                ]),
+                "participant_jids": .object([
+                    "type": .string("array"),
+                    "items": .object(["type": .string("string")]),
+                    "description": .string("Array of participant JIDs to add. The caller's own JID is implicit.")
+                ])
+            ]),
+            "required": .array([.string("account_id"), .string("subject"), .string("participant_jids")]),
+            "additionalProperties": .bool(false)
+        ])
+    )
+
+    static let checkPhone = MCPToolDescriptor(
+        name: "check_phone",
+        title: "Check whether a phone number is on WhatsApp",
+        description: "Resolves a phone number (E.164 or bare digits) against WhatsApp's directory. Returns `is_on_whatsapp`, the canonical JID when present, plus business / verified-name metadata when applicable.",
+        inputSchema: .object([
+            "type": .string("object"),
+            "properties": .object([
+                "account_id": .object([
+                    "type": .string("string"),
+                    "description": .string("UUID of the WhatsApp account whose helper performs the lookup.")
+                ]),
+                "phone_number": .object([
+                    "type": .string("string"),
+                    "description": .string("Phone number in E.164 (`+90555…`) or bare digits.")
+                ])
+            ]),
+            "required": .array([.string("account_id"), .string("phone_number")]),
+            "additionalProperties": .bool(false)
+        ])
+    )
+
+    static let getMessagesWithContact = MCPToolDescriptor(
+        name: "get_messages_with_contact",
+        title: "Get every message exchanged with a contact",
+        description: "Returns messages where either the sender JID OR the chat JID matches the contact — so the result covers the 1:1 thread plus the contact's contributions to every group the operator shares with them. Read-only.",
+        inputSchema: .object([
+            "type": .string("object"),
+            "properties": .object([
+                "account_id": .object([
+                    "type": .string("string"),
+                    "description": .string("UUID of the WhatsApp account to scope the search to.")
+                ]),
+                "contact_jid": .object([
+                    "type": .string("string"),
+                    "description": .string("Contact's WhatsApp JID (typically `digits@s.whatsapp.net`).")
+                ]),
+                "before": .object([
+                    "type": .string("string"),
+                    "format": .string("date-time"),
+                    "description": .string("ISO-8601 timestamp; only messages strictly older are returned.")
+                ]),
+                "limit": .object([
+                    "type": .string("integer"),
+                    "minimum": .int(1),
+                    "maximum": .int(200),
+                    "default": .int(50)
+                ])
+            ]),
+            "required": .array([.string("account_id"), .string("contact_jid")]),
+            "additionalProperties": .bool(false)
+        ])
+    )
+
     static let searchMessages = MCPToolDescriptor(
         name: "search_messages",
         title: "Full-text search messages",
-        description: "FTS5 full-text search over the local message store. Read-only. Sending messages requires explicit user approval in the app — coming in a later milestone.",
+        description: "FTS5 full-text search over the local message store. Read-only.",
         inputSchema: .object([
             "type": .string("object"),
             "properties": .object([
