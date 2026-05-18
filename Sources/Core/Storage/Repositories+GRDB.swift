@@ -348,6 +348,13 @@ struct MessagesRepositoryGRDB: MessagesRepository {
         }
     }
 
+    func delete(messageID: Message.ID) async throws {
+        try await dbPool.write { db in
+            try db.execute(sql: "DELETE FROM message WHERE id = ?", arguments: [messageID])
+            try db.execute(sql: "DELETE FROM message_fts WHERE message_id = ?", arguments: [messageID])
+        }
+    }
+
     func search(text: String, accountID: Account.ID?, chatID: Chat.ID?, limit: Int) async throws -> [Message] {
         try await dbPool.read { db in
             let pattern = FTS5Pattern(matchingAllPrefixesIn: text)

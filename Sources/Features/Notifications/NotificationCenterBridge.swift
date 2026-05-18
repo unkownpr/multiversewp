@@ -3,13 +3,26 @@ import Foundation
 import UserNotifications
 
 @MainActor
-public final class NotificationCenterBridge: MessageIngestionService.Notifier {
+public final class NotificationCenterBridge: NSObject, MessageIngestionService.Notifier, UNUserNotificationCenterDelegate {
 
     private let center: UNUserNotificationCenter
     private let log = AppLog.make("Notifications")
 
     public init(center: UNUserNotificationCenter = .current()) {
         self.center = center
+        super.init()
+        center.delegate = self
+    }
+
+    // Without this delegate macOS suppresses banners while MultiverseWP is the
+    // foreground app — notifications silently land in Notification Center and
+    // the user thinks the test action is broken.
+    nonisolated public func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound, .badge, .list])
     }
 
     public func requestAuthorizationIfNeeded() async {

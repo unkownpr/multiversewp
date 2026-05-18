@@ -286,6 +286,10 @@ final class ChatDetailViewModel: ObservableObject {
                 messages[index] = sent
             }
             try await storage.messages.upsert(sent)
+            // Remove the optimistic local-<uuid> row so the bubble does not
+            // appear twice when the helper echoes the same message back from
+            // whatsmeow's events.Message (info.IsFromMe = true).
+            try? await storage.messages.delete(messageID: pending.id)
             sendError = nil
         } catch {
             if let index = messages.firstIndex(where: { $0.id == pending.id }) {

@@ -23,6 +23,7 @@ public protocol MessagesRepository: Sendable {
     func upsert(_ message: Message) async throws
     func updateDelivery(messageID: Message.ID, status: Message.DeliveryStatus) async throws
     func search(text: String, accountID: Account.ID?, chatID: Chat.ID?, limit: Int) async throws -> [Message]
+    func delete(messageID: Message.ID) async throws
 }
 
 public protocol ContactsRepository: Sendable {
