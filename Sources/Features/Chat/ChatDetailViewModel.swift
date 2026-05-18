@@ -94,6 +94,17 @@ final class ChatDetailViewModel: ObservableObject {
         }
     }
 
+    /// Bump the chat's unread counter so the sidebar re-flags it; lets the
+    /// user revisit a chat later. Wired to the chat-header ellipsis menu.
+    func markUnreadAgain() async {
+        guard let chatID = loadedChatID, let storage else { return }
+        try? await storage.chats.incrementUnread(for: chatID, by: 1)
+        if let refreshed = try? await storage.chats.chat(id: chatID) {
+            chat = refreshed
+            eventBusRef?.publish(.chatUpdated(refreshed))
+        }
+    }
+
     func load(
         chatID: Chat.ID,
         storage: AppStorage,

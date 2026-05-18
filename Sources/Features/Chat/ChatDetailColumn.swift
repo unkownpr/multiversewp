@@ -66,20 +66,67 @@ struct ChatDetailColumn: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button { } label: { Image(systemName: "magnifyingglass") }
-                .buttonStyle(.plain)
-                .help("Search in this chat")
-            Button { } label: { Image(systemName: "phone") }
-                .buttonStyle(.plain)
-                .help("Voice call (coming soon)")
-                .disabled(true)
-            Button { } label: { Image(systemName: "ellipsis") }
-                .buttonStyle(.plain)
-                .help("More")
+
+            Menu {
+                Button {
+                    Task { await viewModel.markUnreadAgain() }
+                } label: { Label("Mark as unread", systemImage: "circle.fill") }
+
+                Button {
+                    if let chat = viewModel.chat {
+                        Task { await environment.toggleMute(chatID: chat.id) }
+                    }
+                } label: {
+                    Label(
+                        viewModel.chat?.isMuted == true ? "Unmute" : "Mute notifications",
+                        systemImage: viewModel.chat?.isMuted == true ? "speaker.wave.2" : "speaker.slash"
+                    )
+                }
+
+                Button {
+                    if let chat = viewModel.chat {
+                        Task { await environment.togglePin(chatID: chat.id) }
+                    }
+                } label: {
+                    Label(
+                        viewModel.chat?.isPinned == true ? "Unpin" : "Pin chat",
+                        systemImage: "pin"
+                    )
+                }
+
+                Divider()
+
+                Button {
+                    revealMediaFolder()
+                } label: { Label("Reveal media folder", systemImage: "folder") }
+
+                Divider()
+
+                Button(role: .destructive) {
+                    if let chat = viewModel.chat {
+                        Task { await environment.clearChat(chatID: chat.id) }
+                    }
+                } label: { Label("Clear messages", systemImage: "trash") }
+            } label: {
+                Image(systemName: "ellipsis")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Chat actions — mute / pin / mark unread / reveal media / clear")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(WATheme.Colors.detailHeader)
+    }
+
+    private func revealMediaFolder() {
+        guard let chat = viewModel.chat else { return }
+        let folder = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("MultiverseWP/sessions/\(chat.accountID.uuidString)/media", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        NSWorkspace.shared.activateFileViewerSelecting([folder])
     }
 
     private var messageList: some View {

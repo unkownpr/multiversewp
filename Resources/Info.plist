@@ -8,6 +8,10 @@
 	<string>MultiverseWP</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -31,6 +35,6 @@
 	<key>SUFeedURL</key>
 	<string>https://unkownpr.github.io/multiversewp/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>REPLACE_ME_WITH_PUBLIC_KEY</string>
+	<string>MdsOnZRAM/xIA/YeRgSrCQGcs0iKN+fudr9P3e6T0ps=</string>
 </dict>
 </plist>

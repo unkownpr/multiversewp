@@ -127,6 +127,45 @@ final class AppEnvironment: ObservableObject {
         settingsOpen = true
     }
 
+    func toggleMute(chatID: Chat.ID) async {
+        do {
+            if var chat = try await storage.chats.chat(id: chatID) {
+                chat.isMuted.toggle()
+                try await storage.chats.upsert(chat)
+                eventBus.publish(.chatUpdated(chat))
+            }
+        } catch {
+            log.error("toggleMute failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    func togglePin(chatID: Chat.ID) async {
+        do {
+            if var chat = try await storage.chats.chat(id: chatID) {
+                chat.isPinned.toggle()
+                try await storage.chats.upsert(chat)
+                eventBus.publish(.chatUpdated(chat))
+            }
+        } catch {
+            log.error("togglePin failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    func clearChat(chatID: Chat.ID) async {
+        do {
+            if let chat = try await storage.chats.chat(id: chatID) {
+                var updated = chat
+                updated.lastMessagePreview = nil
+                updated.lastMessageTimestamp = nil
+                updated.unreadCount = 0
+                try await storage.chats.upsert(updated)
+                eventBus.publish(.chatUpdated(updated))
+            }
+        } catch {
+            log.error("clearChat failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     func renameAccount(_ id: Account.ID, to name: String) async {
         do {
             if var account = try await storage.accounts.allAccounts().first(where: { $0.id == id }) {
