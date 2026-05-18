@@ -257,8 +257,12 @@ private struct MCPTab: View {
                         bullet(L10n.t("mcp.tool.listChats"))
                         bullet(L10n.t("mcp.tool.getMessages"))
                         bullet(L10n.t("mcp.tool.searchMessages"))
+                        bullet(L10n.t("mcp.tool.contactHistory"))
                         bullet(L10n.t("mcp.tool.sendMessage"))
                         bullet(L10n.t("mcp.tool.downloadMedia"))
+                        bullet(L10n.t("mcp.tool.listGroupMembers"))
+                        bullet(L10n.t("mcp.tool.createGroup"))
+                        bullet(L10n.t("mcp.tool.checkPhone"))
                     }
                     .padding(.vertical, 6)
                 }
