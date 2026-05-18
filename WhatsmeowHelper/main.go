@@ -426,6 +426,10 @@ func (h *helper) handleEvent(evt interface{}) {
 	switch v := evt.(type) {
 	case *events.Connected:
 		h.emit(event{Type: "connected", Payload: map[string]interface{}{}})
+		// As soon as we're online, walk every joined group and broadcast a
+		// chat_info event so the Swift side can replace JID-prefix /
+		// sender-name placeholders with the real group title.
+		go h.refreshAllGroupTitles()
 	case *events.Disconnected:
 		h.emit(event{Type: "disconnected", Payload: map[string]interface{}{"reason": "server"}})
 	case *events.LoggedOut:
@@ -692,6 +696,51 @@ func (h *helper) emitMessage(v *events.Message) {
 
 	if info.IsGroup {
 		go h.ensureGroupChatInfo(info.Chat.String())
+	}
+}
+
+// refreshAllGroupTitles asks whatsmeow for every group this account is in
+// and emits a chat_info event per group so the Swift side can heal stale
+// titles left over from earlier ingestion paths (HistorySync, individual
+// message rows that were labelled with the sender's name, etc.).
+func (h *helper) refreshAllGroupTitles() {
+	h.clientMu.Lock()
+	client := h.client
+	h.clientMu.Unlock()
+	if client == nil {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(h.rootCtx, 15*time.Second)
+	defer cancel()
+	groups, err := client.GetJoinedGroups(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "refreshAllGroupTitles failed: %v\n", err)
+		return
+	}
+
+	h.groupTitlesMu.Lock()
+	if h.groupTitles == nil {
+		h.groupTitles = make(map[string]string)
+	}
+	h.groupTitlesMu.Unlock()
+
+	for _, info := range groups {
+		title := strings.TrimSpace(info.GroupName.Name)
+		if title == "" {
+			continue
+		}
+		chatJID := info.JID.String()
+
+		h.groupTitlesMu.Lock()
+		h.groupTitles[chatJID] = title
+		h.groupTitlesMu.Unlock()
+
+		h.emit(event{Type: "chat_info", Payload: map[string]interface{}{
+			"jid":      chatJID,
+			"title":    title,
+			"is_group": true,
+		}})
 	}
 }
 
