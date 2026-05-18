@@ -52,6 +52,10 @@ download media on demand).
   persisted (`@AppStorage("multiversewp.language")`).
 - **Reply previews, group titles, emoji / sticker / GIF fallbacks** in
   every bubble.
+- **Live presence** in solo chats — typing, recording-audio, online,
+  last seen, with a pretty-printed phone-number fallback when the
+  contact hides their status. Wired through whatsmeow's
+  `events.Presence` + `events.ChatPresence`.
 - **Local-first storage.** SQLite (GRDB + FTS5) under your Application
   Support folder. No third-party analytics, telemetry, or cloud sync.
 - **Auto-updates.** Sparkle 2.x with an EdDSA-signed appcast served from
@@ -168,7 +172,7 @@ Regenerate the app icon set:
 | Layer            | Tech                                                  |
 | ---------------- | ----------------------------------------------------- |
 | UI               | SwiftUI (macOS 14+) with AppKit interop where needed. |
-| WhatsApp backend | `whatsmeow` Go helper — one static binary, one process per account, length-prefixed JSON over stdin/stdout. |
+| WhatsApp backend | `whatsmeow` Go helper — one static binary, one process per account, length-prefixed JSON over stdin/stdout. Forwards `events.Message`, `events.Receipt`, `events.HistorySync`, `events.Presence`, `events.ChatPresence`. |
 | Storage          | SQLite via [GRDB.swift](https://github.com/groue/GRDB.swift), FTS5 for search, versioned migrations. |
 | Secrets          | macOS Keychain via `KeychainStore` wrapper.           |
 | MCP              | Stdio Model Context Protocol server, 10 typed tools.  |
