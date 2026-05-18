@@ -15,6 +15,7 @@ public protocol ChatsRepository: Sendable {
     func upsert(_ chat: Chat) async throws
     func incrementUnread(for chatID: Chat.ID, by amount: Int) async throws
     func resetUnread(for chatID: Chat.ID) async throws
+    func totalUnread() async throws -> Int
 }
 
 public protocol MessagesRepository: Sendable {

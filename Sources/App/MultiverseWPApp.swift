@@ -5,6 +5,7 @@ struct MultiverseWPApp: App {
 
     @StateObject private var environment = AppEnvironment.shared
     @StateObject private var updater = UpdaterController()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     @SwiftUI.AppStorage("multiversewp.sidebarHidden") private var sidebarHidden: Bool = false
 

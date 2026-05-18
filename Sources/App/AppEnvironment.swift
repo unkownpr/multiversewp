@@ -20,12 +20,14 @@ final class AppEnvironment: ObservableObject {
     @Published private(set) var accounts: [Account] = []
     @Published private(set) var selectedAccountID: Account.ID?
     @Published private(set) var selectedChatID: Chat.ID?
+    @Published private(set) var totalUnread: Int = 0
 
     static let bundleIdentifier = "com.semihsilistre.multiversewp"
 
     private var clients: [Account.ID: WAClient] = [:]
     private var bootstrapped = false
     private let isUITest: Bool
+    private var unreadSink: AnyCancellable?
 
     init(
         storage: AppStorage,
@@ -86,6 +88,16 @@ final class AppEnvironment: ObservableObject {
                 ingestion.subscribe(account: account, client: client)
                 Task { try? await client.connect() }
             }
+            await refreshTotalUnread()
+            unreadSink = eventBus.publisher
+                .sink { [weak self] event in
+                    switch event {
+                    case .messageReceived, .chatUpdated, .messageDeliveryUpdated:
+                        Task { @MainActor [weak self] in await self?.refreshTotalUnread() }
+                    default:
+                        break
+                    }
+                }
             if !isUITest {
                 await notifications.requestAuthorizationIfNeeded()
                 // Best-effort GitHub Releases pull so the demo "News &
@@ -126,6 +138,15 @@ final class AppEnvironment: ObservableObject {
 
     func requestAddAccount() {
         pendingOnboarding = OnboardingRequest()
+    }
+
+    func refreshTotalUnread() async {
+        do {
+            let count = try await storage.chats.totalUnread()
+            if count != totalUnread { totalUnread = count }
+        } catch {
+            log.error("totalUnread failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     func openSettings() {

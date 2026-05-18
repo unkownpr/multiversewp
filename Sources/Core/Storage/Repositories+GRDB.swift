@@ -281,6 +281,12 @@ struct ChatsRepositoryGRDB: ChatsRepository {
             try db.execute(sql: "UPDATE chat SET unread_count = 0 WHERE id = ?", arguments: [chatID])
         }
     }
+
+    func totalUnread() async throws -> Int {
+        try await dbPool.read { db in
+            try Int.fetchOne(db, sql: "SELECT COALESCE(SUM(unread_count), 0) FROM chat") ?? 0
+        }
+    }
 }
 
 struct MessagesRepositoryGRDB: MessagesRepository {
