@@ -49,27 +49,73 @@ xcodebuild \
     -configuration "$CONFIG" \
     -destination "$DEST" \
     -archivePath "$ARCHIVE_PATH" \
-    "${EXTRA_SIGN_ARGS[@]}" \
+    ${EXTRA_SIGN_ARGS[@]+"${EXTRA_SIGN_ARGS[@]}"} \
     archive | tail -3
 
 bold "==> Copying .app out of archive"
 cp -R "$ARCHIVE_PATH/Products/Applications/$APP_NAME" "$EXPORT_DIR/"
 
-if [ -n "${DEVELOPMENT_TEAM:-}" ]; then
-    bold "==> Notarizing (DEVELOPMENT_TEAM=$DEVELOPMENT_TEAM)"
-    codesign --force --deep --sign "$DEVELOPMENT_TEAM" --options runtime --entitlements Resources/MultiverseWP.entitlements "$EXPORT_DIR/$APP_NAME"
-    if [ -n "${NOTARY_APPLE_ID:-}" ] && [ -n "${NOTARY_PASSWORD:-}" ] && [ -n "${NOTARY_TEAM_ID:-}" ]; then
-        ditto -c -k --keepParent "$EXPORT_DIR/$APP_NAME" "$OUT_DIR/notary.zip"
+SIGN_IDENTITY="${SIGN_IDENTITY:-}"
+if [ -z "$SIGN_IDENTITY" ] && [ -n "${DEVELOPMENT_TEAM:-}" ]; then
+    SIGN_IDENTITY=$(security find-identity -p codesigning -v | \
+        awk -F'"' '/Developer ID Application/ {print $2; exit}')
+fi
+
+if [ -n "$SIGN_IDENTITY" ]; then
+    bold "==> Codesigning with '$SIGN_IDENTITY'"
+    APP_PATH="$EXPORT_DIR/$APP_NAME"
+
+    # Helper binaries bundled under Resources/ (e.g. whatsmeow-helper Go binary).
+    # They are Mach-O but live outside MacOS/, so neither --deep nor a
+    # MacOS-only walk catches them.
+    while IFS= read -r -d '' BIN; do
+        if file "$BIN" | grep -q "Mach-O"; then
+            codesign --force --options runtime --timestamp \
+                --sign "$SIGN_IDENTITY" \
+                "$BIN"
+        fi
+    done < <(find "$APP_PATH/Contents/Resources" -type f -perm -u+x -print0 2>/dev/null)
+
+    # Sign every nested binary first (helper, frameworks, XPC services),
+    # then the outer .app wrapper. `--deep` is deprecated; we walk manually.
+    while IFS= read -r -d '' BIN; do
+        codesign --force --options runtime --timestamp \
+            --sign "$SIGN_IDENTITY" \
+            "$BIN" 2>/dev/null || true
+    done < <(find "$APP_PATH/Contents/MacOS" "$APP_PATH/Contents/Frameworks" "$APP_PATH/Contents/XPCServices" \
+        -type f \( -perm -u+x -o -name "*.dylib" -o -name "*.framework" \) -print0 2>/dev/null)
+
+    # Frameworks need separate pass (sign their bundle root)
+    while IFS= read -r -d '' FW; do
+        codesign --force --options runtime --timestamp \
+            --sign "$SIGN_IDENTITY" \
+            "$FW" 2>/dev/null || true
+    done < <(find "$APP_PATH/Contents/Frameworks" -maxdepth 1 -type d -name "*.framework" -print0 2>/dev/null)
+
+    # Final outer signature with entitlements
+    codesign --force --options runtime --timestamp \
+        --sign "$SIGN_IDENTITY" \
+        --entitlements Resources/MultiverseWP.entitlements \
+        "$APP_PATH"
+
+    bold "==> Verifying signature"
+    codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+    NOTARY_PROFILE="${NOTARY_PROFILE:-multiversewp-notary}"
+    if xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; then
+        bold "==> Notarizing via keychain profile '$NOTARY_PROFILE'"
+        ditto -c -k --keepParent "$APP_PATH" "$OUT_DIR/notary.zip"
         xcrun notarytool submit "$OUT_DIR/notary.zip" \
-            --apple-id "$NOTARY_APPLE_ID" \
-            --password "$NOTARY_PASSWORD" \
-            --team-id "$NOTARY_TEAM_ID" \
+            --keychain-profile "$NOTARY_PROFILE" \
             --wait
-        xcrun stapler staple "$EXPORT_DIR/$APP_NAME"
+        xcrun stapler staple "$APP_PATH"
         rm -f "$OUT_DIR/notary.zip"
+    else
+        echo "warning: notary profile '$NOTARY_PROFILE' missing. Run:"
+        echo "    xcrun notarytool store-credentials $NOTARY_PROFILE --apple-id … --team-id … --password …"
     fi
 else
-    bold "==> Ad-hoc signing (no Apple Developer team set)"
+    bold "==> Ad-hoc signing (no Developer ID Application identity)"
     codesign --force --deep --sign - "$EXPORT_DIR/$APP_NAME"
 fi
 
@@ -80,6 +126,19 @@ hdiutil create -volname "MultiverseWP" \
     -ov -format UDZO \
     "$TMP_DMG" >/dev/null
 mv "$TMP_DMG" "$DMG_PATH"
+
+if [ -n "${SIGN_IDENTITY:-}" ]; then
+    bold "==> Signing DMG"
+    codesign --force --sign "$SIGN_IDENTITY" --timestamp "$DMG_PATH"
+
+    if xcrun notarytool history --keychain-profile "${NOTARY_PROFILE:-multiversewp-notary}" >/dev/null 2>&1; then
+        bold "==> Notarizing DMG"
+        xcrun notarytool submit "$DMG_PATH" \
+            --keychain-profile "${NOTARY_PROFILE:-multiversewp-notary}" \
+            --wait
+        xcrun stapler staple "$DMG_PATH"
+    fi
+fi
 
 SIZE=$(du -sh "$DMG_PATH" | awk '{print $1}')
 bold "==> Done"
@@ -105,6 +164,7 @@ RELEASE_NOTES_ESCAPED=$(printf '%s' "$RELEASE_NOTES_RAW" | sed -e 's/&/\&amp;/g'
 
 SIGN_UPDATE_BIN=""
 for candidate in \
+    "$HOME/Library/Developer/Xcode/DerivedData"/*/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update \
     "$HOME/Library/Developer/Xcode/DerivedData"/*/SourcePackages/checkouts/Sparkle/bin/sign_update \
     "$ROOT_DIR/.swiftpm/checkouts/Sparkle/bin/sign_update" \
     "$(which sign_update 2>/dev/null || true)"; do
