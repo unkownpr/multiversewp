@@ -133,6 +133,10 @@ public enum L10n {
             "composer.emoji": "Emoji & symbols (⌃⌘Space)",
             "composer.attach": "Attach",
             "composer.removeAttachment": "Remove attachment",
+            "bubble.empty.location": "📍 Location",
+            "bubble.empty.contact": "👤 Contact card",
+            "bubble.empty.system": "ℹ️ System message",
+            "bubble.empty.unsupported": "🪄 Sticker / reaction / unsupported message — open WhatsApp on your phone to view",
 
             // Onboarding
             "onboarding.title": "Link a WhatsApp Account",
@@ -235,6 +239,10 @@ public enum L10n {
             "composer.emoji": "Emoji ve semboller (⌃⌘Space)",
             "composer.attach": "Dosya ekle",
             "composer.removeAttachment": "Eki kaldır",
+            "bubble.empty.location": "📍 Konum",
+            "bubble.empty.contact": "👤 Kişi kartı",
+            "bubble.empty.system": "ℹ️ Sistem mesajı",
+            "bubble.empty.unsupported": "🪄 Çıkartma / tepki / desteklenmeyen mesaj — görmek için telefondan WhatsApp'ı aç",
 
             // Onboarding
             "onboarding.title": "WhatsApp Hesabı Bağla",

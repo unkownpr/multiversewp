@@ -193,6 +193,30 @@ private struct MessageBubble: View {
         return FileManager.default.fileExists(atPath: path)
     }
 
+    /// True when there's nothing to render: no body, no local media file,
+    /// and no media metadata that the `mediaView` placeholder would catch.
+    private var shouldShowEmptyFallback: Bool {
+        let bodyEmpty = (message.body ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        guard bodyEmpty, !hasLocalMedia else { return false }
+        switch message.kind {
+        case .text, .system, .location, .contact: return true
+        default: return false
+        }
+    }
+
+    /// Friendly hint used in empty-message bubbles so the user sees
+    /// *something* instead of a blank green/white rectangle. Examples:
+    /// stickers we couldn't decode, group system events, deleted-for-me
+    /// messages, or unsupported proto types (reactions, polls, …).
+    private var emptyFallback: String {
+        switch message.kind {
+        case .location: return L10n.t("bubble.empty.location")
+        case .contact: return L10n.t("bubble.empty.contact")
+        case .system: return L10n.t("bubble.empty.system")
+        default: return L10n.t("bubble.empty.unsupported")
+        }
+    }
+
     @ViewBuilder
     private var bubbleContent: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -207,11 +231,11 @@ private struct MessageBubble: View {
                     .font(.system(size: 14))
                     .foregroundStyle(WATheme.Colors.bubbleText)
                     .fixedSize(horizontal: false, vertical: true)
-            } else if !hasLocalMedia, message.kind == .text {
-                Text(placeholder)
-                    .font(.system(size: 14))
-                    .foregroundStyle(WATheme.Colors.bubbleText)
-                    .fixedSize(horizontal: false, vertical: true)
+            } else if shouldShowEmptyFallback {
+                Text(emptyFallback)
+                    .font(.system(size: 13))
+                    .italic()
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(.horizontal, 12)
