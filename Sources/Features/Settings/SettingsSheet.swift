@@ -178,64 +178,96 @@ private struct MCPTab: View {
 
     @State private var installMessage: InstallMessage?
 
-    private var executablePath: String { ClaudeDesktopInstaller.currentExecutablePath() }
+    private var executablePath: String { MCPClientInstaller.currentExecutablePath() }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Label("Model Context Protocol", systemImage: "brain")
+                Label(L10n.t("mcp.title"), systemImage: "brain")
                     .font(.title3.bold())
-                Text("MultiverseWP ships with a local MCP server so AI assistants — Claude Desktop, Claude Code, or any MCP-compatible client — can read your WhatsApp history through a strictly read-only stdio bridge. Sending messages will arrive in a later milestone behind an explicit per-chat approval prompt.")
+                Text(L10n.t("mcp.intro"))
                     .foregroundStyle(.secondary)
 
-                GroupBox("Status") {
+                GroupBox(L10n.t("mcp.section.status")) {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(spacing: 10) {
                             Circle()
                                 .fill(Color.green)
                                 .frame(width: 10, height: 10)
-                            Text("Available (read-only, run via --mcp flag)")
+                            Text(L10n.t("mcp.status.available"))
                                 .font(.callout.weight(.medium))
                         }
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Executable").font(.caption).foregroundStyle(.secondary)
+                            Text(L10n.t("mcp.executable")).font(.caption).foregroundStyle(.secondary)
                             Text(executablePath)
                                 .font(.caption.monospaced())
                                 .textSelection(.enabled)
                                 .foregroundStyle(.primary)
                         }
-                        HStack(spacing: 10) {
-                            Button("Install for Claude Desktop") {
-                                installClaudeDesktopEntry()
-                            }
-                            .buttonStyle(.borderedProminent)
-                            if let message = installMessage {
-                                Label(message.text, systemImage: message.systemImage)
-                                    .font(.caption)
-                                    .foregroundStyle(message.isError ? Color.red : Color.green)
-                            }
+                        if let message = installMessage {
+                            Label(message.text, systemImage: message.systemImage)
+                                .font(.caption)
+                                .foregroundStyle(message.isError ? Color.red : Color.green)
                         }
                     }
                     .padding(.vertical, 6)
                 }
 
-                GroupBox("Available tools") {
-                    VStack(alignment: .leading, spacing: 6) {
-                        bullet("list_accounts — list every linked WhatsApp account")
-                        bullet("list_chats(account_id?, query?, limit?) — list chats")
-                        bullet("get_messages(chat_id, before?, limit?) — fetch history")
-                        bullet("search_messages(query, account_id?, chat_id?, limit?) — FTS5 over the local store")
-                        bullet("send_message — coming in a later milestone (explicit per-chat approval)")
-                        bullet("download_media — coming in a later milestone (explicit per-chat approval)")
+                GroupBox(L10n.t("mcp.section.installers")) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(MCPClientTarget.allKnown) { target in
+                            installerRow(target: target)
+                        }
                     }
                     .padding(.vertical, 6)
                 }
-                GroupBox("How you'll use it") {
+
+                GroupBox(L10n.t("mcp.section.manual")) {
                     VStack(alignment: .leading, spacing: 8) {
-                        bullet("Launch `MultiverseWP --mcp` to attach the stdio MCP server to any AI client.")
-                        bullet("Or hit \"Install for Claude Desktop\" above to drop the config entry into `~/Library/Application Support/Claude/claude_desktop_config.json` automatically.")
-                        bullet("Then ask your assistant things like \"summarise my unread chats today\" or \"search every conversation for the dentist appointment\".")
-                        bullet("Write tools (send_message, download_media) will require per-chat consent prompts when they ship in a later milestone.")
+                        Text(L10n.t("mcp.manual.intro"))
+                            .font(.callout)
+                        Text(MCPClientInstaller.snippet())
+                            .font(.system(size: 11, design: .monospaced))
+                            .textSelection(.enabled)
+                            .padding(10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.gray.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+                        HStack(spacing: 8) {
+                            Button {
+                                let pasteboard = NSPasteboard.general
+                                pasteboard.clearContents()
+                                pasteboard.setString(MCPClientInstaller.snippet(), forType: .string)
+                            } label: {
+                                Label(L10n.t("mcp.manual.copy"), systemImage: "doc.on.doc")
+                            }
+                            .buttonStyle(.bordered)
+                            Spacer()
+                            Text(L10n.t("mcp.manual.help"))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.trailing)
+                        }
+                    }
+                    .padding(.vertical, 6)
+                }
+
+                GroupBox(L10n.t("mcp.section.tools")) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        bullet(L10n.t("mcp.tool.listAccounts"))
+                        bullet(L10n.t("mcp.tool.listChats"))
+                        bullet(L10n.t("mcp.tool.getMessages"))
+                        bullet(L10n.t("mcp.tool.searchMessages"))
+                        bullet(L10n.t("mcp.tool.sendMessage"))
+                        bullet(L10n.t("mcp.tool.downloadMedia"))
+                    }
+                    .padding(.vertical, 6)
+                }
+                GroupBox(L10n.t("mcp.section.howToUse")) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        bullet(L10n.t("mcp.howToUse.launch"))
+                        bullet(L10n.t("mcp.howToUse.install"))
+                        bullet(L10n.t("mcp.howToUse.ask"))
+                        bullet(L10n.t("mcp.howToUse.consent"))
                     }
                     .padding(.vertical, 6)
                 }
@@ -245,18 +277,41 @@ private struct MCPTab: View {
         }
     }
 
-    private func installClaudeDesktopEntry() {
-        let installer = ClaudeDesktopInstaller()
+    @ViewBuilder
+    private func installerRow(target: MCPClientTarget) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: target.symbol)
+                .frame(width: 22, alignment: .center)
+                .foregroundStyle(WATheme.Colors.accentMid)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(target.displayName).font(.callout.weight(.medium))
+                Text(target.footnote)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer()
+            Button(L10n.t("mcp.install.cta")) {
+                installEntry(for: target)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+    }
+
+    private func installEntry(for target: MCPClientTarget) {
+        let installer = MCPClientInstaller(target: target)
         switch installer.install() {
         case .success(let url):
             installMessage = InstallMessage(
-                text: "Installed at \(url.path)",
+                text: "\(target.displayName): \(L10n.t("mcp.install.success")) \(url.path)",
                 systemImage: "checkmark.circle.fill",
                 isError: false
             )
         case .failure(let error):
             installMessage = InstallMessage(
-                text: "Install failed: \(error.localizedDescription)",
+                text: "\(target.displayName): \(error.localizedDescription)",
                 systemImage: "exclamationmark.triangle.fill",
                 isError: true
             )
