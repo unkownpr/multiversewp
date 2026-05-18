@@ -6,28 +6,32 @@
         <description>Auto-update feed for MultiverseWP.</description>
         <language>en</language>
         <item>
-            <title>Version 0.1.13</title>
-            <pubDate>Mon, 18 May 2026 07:06:46 +0000</pubDate>
-            <sparkle:version>0.1.13</sparkle:version>
-            <sparkle:shortVersionString>0.1.13</sparkle:shortVersionString>
+            <title>Version 0.1.14</title>
+            <pubDate>Mon, 18 May 2026 12:02:46 +0000</pubDate>
+            <sparkle:version>0.1.14</sparkle:version>
+            <sparkle:shortVersionString>0.1.14</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <description><![CDATA[chore: point Sparkle feed + release URLs at the real GitHub user
-
-The Sparkle agent baked the placeholder `semihsilistre.github.io`
-domain into project.yml / Info.plist / release.sh / docs / README.
-The real repo lives at https://github.com/unkownpr/multiversewp and
-GitHub Pages is enabled on gh-pages → https://unkownpr.github.io/
-multiversewp. Swap every reference accordingly.
-
-SUFeedURL inside Info.plist matters most: without this fix, Sparkle
-would hit a 404 every Check-for-Updates and report "feed unreachable".]]></description>
+            <description><![CDATA[<h3>What&apos;s new in 0.1.14</h3>
+<ul>
+  <li>Live presence in solo chats — typing, recording audio, online, last seen.</li>
+  <li>Menu-bar status item + Dock badge for total unread across accounts.</li>
+  <li>Native notifications tab in Settings with permission check and test banner.</li>
+  <li>MCP write tools live: send_message, create_group, list_group_members, check_phone.</li>
+  <li>One-click MCP installers for Claude Desktop, Claude Code, Cursor, Continue.</li>
+  <li>Reply quote previews and lazy group title hydration.</li>
+  <li>Stickers, locations and unsupported messages no longer render as empty bubbles.</li>
+  <li>TR / EN language picker in Settings.</li>
+  <li>Fix: no more "online" claim for every contact.</li>
+  <li>Fix: foreground notification banners + send-echo duplicate row.</li>
+  <li>Build: proper Developer ID signing + notarization via keychain profile.</li>
+</ul>]]></description>
             <enclosure
-                url="https://github.com/unkownpr/multiversewp/releases/download/v0.1.13/MultiverseWP-0.1.13.dmg"
-                sparkle:version="0.1.13"
-                sparkle:shortVersionString="0.1.13"
-                length="20013957"
+                url="https://github.com/unkownpr/multiversewp/releases/download/v0.1.14/MultiverseWP-0.1.14.dmg"
+                sparkle:version="0.1.14"
+                sparkle:shortVersionString="0.1.14"
+                length="20309836"
                 type="application/octet-stream"
-                sparkle:edSignature="5Qu90W3h8SbDbYdhfErLVpLThv6M0dkJuFhocmfG28Uv7FVnhV6VQo8wqGcf/9aBuR1NdX72lPn5aksVE9YUAg==" />
+                sparkle:edSignature="DqbkeqOJnV/GaFWjICR45KmXTsDH5ZeAYIOYw72XrZtiKXnvSs4WgfXKo3+xON1V7q1nIWNq80I94G+Tn7lgAg==" />
         </item>
     </channel>
 </rss>
