@@ -6,19 +6,19 @@
         <description>Auto-update feed for MultiverseWP.</description>
         <language>en</language>
         <item>
-            <title>Version 0.1.16</title>
-            <pubDate>Tue, 19 May 2026 16:49:59 +0000</pubDate>
-            <sparkle:version>0.1.16</sparkle:version>
-            <sparkle:shortVersionString>0.1.16</sparkle:shortVersionString>
+            <title>Version 0.1.17</title>
+            <pubDate>Tue, 19 May 2026 17:38:09 +0000</pubDate>
+            <sparkle:version>0.1.17</sparkle:version>
+            <sparkle:shortVersionString>0.1.17</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <description><![CDATA[chore(release): bump to 0.1.16]]></description>
+            <description><![CDATA[chore(release): bump to 0.1.17]]></description>
             <enclosure
-                url="https://github.com/unkownpr/multiversewp/releases/download/v0.1.16/MultiverseWP-0.1.16.dmg"
-                sparkle:version="0.1.16"
-                sparkle:shortVersionString="0.1.16"
-                length="20312317"
+                url="https://github.com/unkownpr/multiversewp/releases/download/v0.1.17/MultiverseWP-0.1.17.dmg"
+                sparkle:version="0.1.17"
+                sparkle:shortVersionString="0.1.17"
+                length="20316371"
                 type="application/octet-stream"
-                sparkle:edSignature="aFTolEyhPBIPB07fwEC1QKGuRtxm62x4f1m7hqqfmXPJAt3fZvjpG4zy82xkv4Q8uq7dmRZtLax53ey73Cz5Bw==" />
+                sparkle:edSignature="gRG6RkqSkMARLL3Z/wCuhf6UwExS4HEQr1aJJIdVfAHOLpq29aqXtxDGAiB+LMG4aRexkpeGi7wGkXCgkaoJCA==" />
         </item>
     </channel>
 </rss>
