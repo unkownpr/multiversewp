@@ -10,15 +10,29 @@ public final class MessageIngestionService {
     public protocol SelectionProvider: AnyObject {
         var selectedAccountID: Account.ID? { get }
         var selectedChatID: Chat.ID? { get }
+        /// True only when the host process is the foreground app. Required to
+        /// distinguish "user is actively reading this chat" from "user has the
+        /// chat selected but has tabbed away" — the latter must still raise
+        /// a notification and increment unread.
+        var isAppActive: Bool { get }
     }
 
     private let storage: AppStorage
     private let eventBus: EventBus
     private var notifier: Notifier?
-    private weak var selection: AnyObject?
+    // Strong reference. SelectionProvider implementations are expected to hold
+    // their backing environment weakly, so retaining the provider here cannot
+    // form a cycle. A weak reference here used to drop inline-constructed
+    // adapters (see AppEnvironment.init), making `isChatCurrentlyOpen` always
+    // return false and breaking unread/badge bookkeeping for the active chat.
+    private var selection: (any SelectionProvider)?
     private let log = AppLog.make("Ingestion")
 
     private var tasks: [Account.ID: Task<Void, Never>] = [:]
+    // Cached client per account so the ingest path can ack reads back to the
+    // server when the user already has the chat open. Sym­metric with `tasks`
+    // — populated in subscribe, cleared in unsubscribe/stopAll.
+    private var clients: [Account.ID: WAClient] = [:]
 
     public init(
         storage: AppStorage,
@@ -39,6 +53,7 @@ public final class MessageIngestionService {
 
     public func subscribe(account: Account, client: WAClient) {
         tasks[account.id]?.cancel()
+        clients[account.id] = client
         // Capture the AsyncStream synchronously so the underlying subject
         // subscription is in place before the helper's next event lands.
         let stream = client.events
@@ -54,11 +69,13 @@ public final class MessageIngestionService {
     public func unsubscribe(accountID: Account.ID) {
         tasks[accountID]?.cancel()
         tasks.removeValue(forKey: accountID)
+        clients.removeValue(forKey: accountID)
     }
 
     public func stopAll() {
         tasks.values.forEach { $0.cancel() }
         tasks.removeAll()
+        clients.removeAll()
     }
 
     private func handle(event: WAClientEvent, account: Account) async {
@@ -149,7 +166,14 @@ public final class MessageIngestionService {
 
             if direction == .incoming {
                 let isCurrentlyOpen = isChatCurrentlyOpen(accountID: account.id, chatID: chatID)
-                if !isCurrentlyOpen {
+                if isCurrentlyOpen {
+                    // Chat is in the foreground — ack the read upstream so the
+                    // peer's WhatsApp sees blue ticks immediately rather than
+                    // waiting for the next selectChat() trigger.
+                    if let client = clients[account.id] {
+                        try? await client.markChatRead(chatJID: incoming.chatJID)
+                    }
+                } else {
                     try await storage.chats.incrementUnread(for: chatID, by: 1)
                     await notifier?.deliver(account: account, chat: chat, message: message)
                 }
@@ -322,7 +346,8 @@ public final class MessageIngestionService {
     }
 
     private func isChatCurrentlyOpen(accountID: Account.ID, chatID: Chat.ID) -> Bool {
-        guard let provider = selection as? any SelectionProvider else { return false }
+        guard let provider = selection else { return false }
+        guard provider.isAppActive else { return false }
         return provider.selectedAccountID == accountID && provider.selectedChatID == chatID
     }
 

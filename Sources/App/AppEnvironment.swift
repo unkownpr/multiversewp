@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 import OSLog
@@ -513,4 +514,5 @@ private final class SelectionAdapter: MessageIngestionService.SelectionProvider,
     init(environment: AppEnvironment) { self.environment = environment }
     var selectedAccountID: Account.ID? { MainActor.assumeIsolated { environment?.selectedAccountID } }
     var selectedChatID: Chat.ID? { MainActor.assumeIsolated { environment?.selectedChatID } }
+    var isAppActive: Bool { MainActor.assumeIsolated { NSApplication.shared.isActive } }
 }

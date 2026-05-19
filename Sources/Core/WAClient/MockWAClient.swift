@@ -50,7 +50,10 @@ public final class MockWAClient: WAClient, @unchecked Sendable {
         return URL(fileURLWithPath: "/tmp/\(messageID)")
     }
 
-    public func markChatRead(chatJID: String) async throws {}
+    public private(set) var markChatReadCalls: [String] = []
+    public func markChatRead(chatJID: String) async throws {
+        markChatReadCalls.append(chatJID)
+    }
 
     public func listGroupMembers(chatJID: String) async throws -> [GroupMemberInfo] {
         listGroupMembersCalls.append(chatJID)
