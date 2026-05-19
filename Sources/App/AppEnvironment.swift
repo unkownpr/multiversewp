@@ -31,6 +31,13 @@ final class AppEnvironment: ObservableObject {
     private let isUITest: Bool
     private var unreadSink: AnyCancellable?
     private var presenceSink: AnyCancellable?
+    // Per-chat watchdogs that auto-clear a stale typing / recording indicator
+    // when the peer never sends a `paused` ChatPresence (peer crashed,
+    // backgrounded, or dropped the socket). Matches WhatsApp mobile's ~10s
+    // client-side fallback so the header doesn't keep reading "yazıyor…"
+    // long after the user actually stopped composing.
+    private var typingResetTasks: [String: Task<Void, Never>] = [:]
+    private let typingResetInterval: Duration = .seconds(8)
 
     init(
         storage: AppStorage,
@@ -179,6 +186,26 @@ final class AppEnvironment: ObservableObject {
         state.isTyping = isTyping
         state.isRecording = isRecording
         presence[chatJID] = state
+
+        // Cancel any inflight watchdog — either we got a fresh composing event
+        // (re-arm below) or we got the paused/idle event (no timer needed).
+        typingResetTasks[chatJID]?.cancel()
+        typingResetTasks.removeValue(forKey: chatJID)
+
+        guard isTyping || isRecording else { return }
+        let interval = typingResetInterval
+        typingResetTasks[chatJID] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: interval)
+            guard let self, !Task.isCancelled else { return }
+            // Only clear if the watchdog is still the active one for this chat
+            // — a fresh composing event would have replaced it via the
+            // cancel-and-reinsert above.
+            self.typingResetTasks.removeValue(forKey: chatJID)
+            var state = self.presence[chatJID] ?? PresenceState()
+            state.isTyping = false
+            state.isRecording = false
+            self.presence[chatJID] = state
+        }
     }
 
     func openSettings() {
