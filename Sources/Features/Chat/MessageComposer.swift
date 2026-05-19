@@ -59,8 +59,8 @@ struct MessageComposer: View {
                     .focused($focused)
                     .padding(.vertical, 8)
                     .padding(.horizontal, 14)
-                    .background(.white, in: Capsule())
-                    .overlay(Capsule().stroke(.black.opacity(0.06)))
+                    .background(WATheme.Colors.composerSurface, in: Capsule())
+                    .overlay(Capsule().stroke(.primary.opacity(0.08)))
                     .onSubmit { Task { await send() } }
                     .accessibilityIdentifier("MessageComposerField")
 

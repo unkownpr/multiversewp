@@ -329,7 +329,7 @@ private struct MessageBubble: View {
             if message.direction == .incoming, let name = message.senderDisplayName {
                 Text(name)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(WATheme.Colors.accentDark)
+                    .foregroundStyle(WATheme.Colors.senderLabel)
             }
             if let quoted {
                 quotedPreview(quoted)

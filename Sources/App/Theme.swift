@@ -74,6 +74,22 @@ enum WATheme {
         static let readReceipt = Color(nsColor: .hex(0x34B7F1))
         /// Online indicator.
         static let onlineBadge = Color(nsColor: .hex(0x25D366))
+
+        /// Composer text-field background — parchment-white in light, dark
+        /// surface in dark. Matches WhatsApp's macOS dark composer chrome.
+        static let composerSurface = Color(
+            light: .white,
+            dark:  .hex(0x2A3942)
+        )
+
+        /// Group-chat sender label inside incoming bubbles. Needs strong
+        /// contrast against the bubble fill — light bubbles take the
+        /// branded dark green, dark bubbles take the bright accent so the
+        /// label does not fade into the background.
+        static let senderLabel = Color(
+            light: .hex(0x075E54),
+            dark:  .hex(0x25D366)
+        )
     }
 
     enum Metrics {
